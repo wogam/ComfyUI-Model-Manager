@@ -32,10 +32,6 @@ if len(uninstalled_package) > 0:
 # Init config settings
 config.extension_uri = extension_uri
 
-# Try to download web distribution
-version = utils.get_current_version()
-utils.download_web_distribution(version)
-
 
 # Add api routes
 from .py import manager

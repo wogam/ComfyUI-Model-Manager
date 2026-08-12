@@ -108,49 +108,8 @@ def get_current_version():
 
 
 def download_web_distribution(version: str):
-    web_path = join_path(config.extension_uri, "web")
-    dev_web_file = join_path(web_path, "manager-dev.js")
-    if os.path.exists(dev_web_file):
-        return
+    return
 
-    web_version = "0.0.0"
-    version_file = join_path(web_path, "version.yaml")
-    if os.path.exists(version_file):
-        with open(version_file, "r", encoding="utf-8", newline="") as f:
-            version_content = yaml.safe_load(f)
-            web_version = version_content.get("version", web_version)
-
-    if version == web_version:
-        return
-
-    try:
-        print_info(f"current version {version}, web version {web_version}")
-        print_info("Downloading web distribution...")
-        download_url = f"https://github.com/hayden-cn/ComfyUI-Model-Manager/releases/download/v{version}/dist.tar.gz"
-        response = requests.get(download_url, stream=True)
-        response.raise_for_status()
-
-        temp_file = join_path(config.extension_uri, "temp.tar.gz")
-        with open(temp_file, "wb") as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                f.write(chunk)
-
-        if os.path.exists(web_path):
-            shutil.rmtree(web_path)
-
-        print_info("Extracting web distribution...")
-        with tarfile.open(temp_file, "r:gz") as tar:
-            members = [member for member in tar.getmembers() if member.name.startswith("web/")]
-            tar.extractall(path=config.extension_uri, members=members)
-
-        os.remove(temp_file)
-        print_info("Web distribution downloaded successfully.")
-    except requests.exceptions.RequestException as e:
-        print_error(f"Failed to download web distribution: {e}")
-    except tarfile.TarError as e:
-        print_error(f"Failed to extract web distribution: {e}")
-    except Exception as e:
-        print_error(f"An unexpected error occurred: {e}")
 
 
 def resolve_model_base_paths() -> dict[str, list[str]]:
