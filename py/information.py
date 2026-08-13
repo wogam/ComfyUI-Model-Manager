@@ -15,6 +15,7 @@ from abc import ABC, abstractmethod
 from urllib.parse import urlparse, parse_qs
 from PIL import Image
 from io import BytesIO
+from typing import Optional, Union, List, Dict, Any
 
 
 from . import utils
@@ -44,9 +45,32 @@ class UnknownWebsiteSearcher(ModelSearcher):
         raise RuntimeError(f"Unknown Website, unable to search with hash value.")
 
 
+def get_folder_from_tags(tags: list[str], base_model: Optional[str]) -> str:
+    if not base_model or not base_model.strip():
+        base_folder = ""
+    else:
+        base_folder = utils.sanitize_filename(base_model)
+
+    tag_order = [
+        "CHARACTER", "STYLE", "CELEBRITY", "CONCEPT", "CLOTHING",
+        "BASE MODEL", "POSES", "BACKGROUND", "TOOL", "BUILDINGS",
+        "VEHICLE", "OBJECTS", "ANIMAL", "ACTION", "ASSETS"
+    ]
+    
+    tags_upper = [str(t).upper() for t in tags] if tags else []
+    
+    for tag in tag_order:
+        if tag in tags_upper:
+            subfolder = tag.lower().capitalize()
+            return f"{base_folder}/{subfolder}" if base_folder else subfolder
+
+    return base_folder
+
+
 class CivitaiModelSearcher(ModelSearcher):
-    def search_by_url(self, url: str):
+    def search_by_url(self, url: str, request: Optional[web.Request] = None):
         parsed_url = urlparse(url)
+        domain = parsed_url.netloc or "civitai.com"
 
         pathname = parsed_url.path
         match = re.match(r"^/models/(\d*)", pathname)
@@ -58,39 +82,73 @@ class CivitaiModelSearcher(ModelSearcher):
         if not model_id:
             return []
 
-        response = requests.get(f"https://civitai.com/api/v1/models/{model_id}")
-        response.raise_for_status()
-        res_data: dict = response.json()
+        session = utils.create_request_session(request, platform="civitai", traffic_type="api")
 
-        model_versions: list[dict] = res_data["modelVersions"]
+        domains_to_try = [domain]
+        if "civitai.red" not in domain:
+            domains_to_try.append("civitai.red")
+        if "civitai.com" not in domain:
+            domains_to_try.append("civitai.com")
+
+        res_data = None
+        last_error = None
+
+        for d in domains_to_try:
+            try:
+                api_url = f"https://{d}/api/v1/models/{model_id}"
+                response = session.get(api_url, timeout=12)
+                response.raise_for_status()
+                res_data = response.json()
+                domain = d
+                break
+            except Exception as e:
+                last_error = e
+
+        if not res_data:
+            if last_error:
+                raise last_error
+            raise RuntimeError(f"Failed to fetch model info for model ID {model_id}")
+
+        model_versions: list[dict] = res_data.get("modelVersions", [])
         if version_id:
             model_versions = utils.filter_with(model_versions, {"id": int(version_id)})
+
+        tags = [t.get("name", "") if isinstance(t, dict) else str(t) for t in res_data.get("tags", [])]
 
         models: list[dict] = []
 
         for version in model_versions:
             version_files: list[dict] = version.get("files", [])
             model_files = utils.filter_with(version_files, {"type": "Model"})
-            # issue: https://github.com/hayden-cn/ComfyUI-Model-Manager/issues/188
-            # Some Embeddings do not have Model file, but Negative
-            # Make sure there are at least downloadable files
             model_files = version_files if len(model_files) == 0 else model_files
 
-            shortname = version.get("name", None) if len(model_files) > 0 else None
+            model_name = utils.sanitize_filename(res_data.get("name", "model"))
+            version_name = utils.sanitize_filename(version.get("name", "v1.0"))
+            base_model = version.get("baseModel", "")
+            sub_folder = get_folder_from_tags(tags, base_model)
 
             for file in model_files:
-                name = file.get("name", None)
-                extension = os.path.splitext(name)[1]
-                basename = os.path.splitext(name)[0]
+                orig_name = file.get("name", None)
+                extension = os.path.splitext(orig_name)[1] if orig_name else ".safetensors"
+                
+                basename = f"{model_name} - {version_name}"
+                fullname = f"{basename}{extension}"
+                download_url = file.get("downloadUrl", "")
+
+                if domain and domain != "civitai.com" and "civitai.com" in download_url:
+                    download_url = download_url.replace("civitai.com", domain)
+
+                published_at = version.get("publishedAt") or res_data.get("publishedAt") or res_data.get("createdAt")
 
                 metadata_info = {
                     "website": "Civitai",
-                    "modelPage": f"https://civitai.com/models/{model_id}?modelVersionId={version.get('id')}",
+                    "modelPage": f"https://{domain}/models/{model_id}?modelVersionId={version.get('id')}",
                     "author": res_data.get("creator", {}).get("username", None),
-                    "baseModel": version.get("baseModel"),
+                    "baseModel": base_model,
+                    "publishedAt": published_at,
                     "hashes": file.get("hashes"),
                     "metadata": file.get("metadata"),
-                    "preview": [i["url"] for i in version["images"]],
+                    "preview": [i["url"] for i in version.get("images", []) if isinstance(i, dict) and "url" in i],
                 }
 
                 description_parts: list[str] = []
@@ -113,18 +171,20 @@ class CivitaiModelSearcher(ModelSearcher):
 
                 model = {
                     "id": version.get("id"),
-                    "shortname": shortname or basename,
+                    "name": fullname,
+                    "shortname": version_name,
                     "basename": basename,
                     "extension": extension,
+                    "fullname": fullname,
                     "preview": metadata_info.get("preview"),
                     "sizeBytes": file.get("sizeKB", 0) * 1024,
                     "type": self._resolve_model_type(res_data.get("type", "")),
                     "pathIndex": 0,
-                    "subFolder": "",
+                    "subFolder": sub_folder,
                     "description": "\n".join(description_parts),
                     "metadata": file.get("metadata"),
                     "downloadPlatform": "civitai",
-                    "downloadUrl": file.get("downloadUrl"),
+                    "downloadUrl": download_url,
                     "hashes": file.get("hashes"),
                     "files": version_files if len(version_files) > 1 else None,
                 }
@@ -132,36 +192,54 @@ class CivitaiModelSearcher(ModelSearcher):
 
         return models
 
-    def search_by_hash(self, hash: str):
+    def search_by_hash(self, hash: str, request: Optional[web.Request] = None):
         if not hash:
             raise RuntimeError(f"Hash value is empty.")
 
-        response = requests.get(f"https://civitai.com/api/v1/model-versions/by-hash/{hash}")
-        response.raise_for_status()
-        version: dict = response.json()
+        session = utils.create_request_session(request, platform="civitai", traffic_type="api")
+        
+        response = None
+        last_error = None
+        for d in ["civitai.com", "civitai.red"]:
+            try:
+                response = session.get(f"https://{d}/api/v1/model-versions/by-hash/{hash}", timeout=12)
+                response.raise_for_status()
+                break
+            except Exception as e:
+                last_error = e
 
+        if not response or response.status_code != 200:
+            if last_error:
+                raise last_error
+            raise RuntimeError(f"Hash search failed for hash {hash}")
+
+        version: dict = response.json()
         model_id = version.get("modelId")
         version_id = version.get("id")
 
         model_page = f"https://civitai.com/models/{model_id}?modelVersionId={version_id}"
 
-        models = self.search_by_url(model_page)
+        models = self.search_by_url(model_page, request=request)
 
         for model in models:
             sha256 = model.get("hashes", {}).get("SHA256")
             if sha256 == hash:
                 return model
 
-        return models[0]
+        return models[0] if models else None
 
     def _resolve_model_type(self, model_type: str):
         map_legacy = {
             "TextualInversion": "embeddings",
             "LoCon": "loras",
             "DoRA": "loras",
+            "LORA": "loras",
+            "Lora": "loras",
             "Controlnet": "controlnet",
+            "ControlNet": "controlnet",
             "Upscaler": "upscale_models",
             "VAE": "vae",
+            "Checkpoint": "checkpoints",
             "unknown": "",
         }
         return map_legacy.get(model_type, f"{model_type.lower()}s")
@@ -308,7 +386,7 @@ class Information:
             """
             try:
                 model_page = request.query.get("model-page", None)
-                result = self.fetch_model_info(model_page)
+                result = self.fetch_model_info(model_page, request=request)
                 return web.json_response({"success": True, "data": result})
             except Exception as e:
                 error_msg = f"Fetch model info failed: {str(e)}"
@@ -464,12 +542,12 @@ class Information:
             img_byte_arr.seek(0)
             return img_byte_arr
 
-    def fetch_model_info(self, model_page: str):
+    def fetch_model_info(self, model_page: str, request: Optional[web.Request] = None):
         if not model_page:
             return []
 
         model_searcher = self.get_model_searcher_by_url(model_page)
-        result = model_searcher.search_by_url(model_page)
+        result = model_searcher.search_by_url(model_page, request=request)
         return result
 
     def get_scan_information_task_filepath(self):
@@ -545,7 +623,7 @@ class Information:
                         utils.print_debug(f"Calculate sha256 for {abs_model_path}")
                         hash_value = utils.calculate_sha256(abs_model_path)
                         utils.print_info(f"Searching model info by hash {hash_value}")
-                        model_info = CivitaiModelSearcher().search_by_hash(hash_value)
+                        model_info = CivitaiModelSearcher().search_by_hash(hash_value, request=request)
 
                         preview_url_list = model_info.get("preview", [])
                         preview_url = preview_url_list[0] if preview_url_list else None
@@ -576,9 +654,9 @@ class Information:
 
     def get_model_searcher_by_url(self, url: str) -> ModelSearcher:
         parsed_url = urlparse(url)
-        host_name = parsed_url.hostname
-        if host_name == "civitai.com":
+        host_name = (parsed_url.hostname or "").lower()
+        if "civitai" in host_name:
             return CivitaiModelSearcher()
-        elif host_name == "huggingface.co":
+        elif "huggingface" in host_name:
             return HuggingfaceModelSearcher()
         return UnknownWebsiteSearcher()

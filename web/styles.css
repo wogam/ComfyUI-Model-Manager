@@ -1,0 +1,442 @@
+/* ComfyUI Model Manager - Native Styles */
+
+/* Base Overlay (Zero backdrop-filter to prevent GPU spikes) */
+.cmm-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  color: var(--fg-color, #e0e0e0);
+}
+
+/* Sub-modals float cleanly without black backdrops */
+.cmm-dialog-overlay.cmm-sub-overlay {
+  background: transparent !important;
+  pointer-events: none;
+}
+
+.cmm-dialog-overlay.cmm-sub-overlay .cmm-dialog {
+  pointer-events: auto;
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.cmm-dialog {
+  background: var(--bg-color, #1e1e24);
+  border: 1px solid var(--border-color, #33333e);
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+  width: 90vw;
+  max-width: 1200px;
+  height: 85vh;
+  max-height: 900px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: cmm-fade-in 0.08s ease-out;
+}
+
+.cmm-dialog-sub {
+  max-width: 900px;
+  height: auto !important;
+  max-height: 88vh;
+}
+
+@keyframes cmm-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Header - Draggable handle */
+.cmm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  background: var(--comfy-menu-bg, #282830);
+  border-bottom: 1px solid var(--border-color, #33333e);
+  cursor: grab;
+  user-select: none;
+}
+
+.cmm-header:active {
+  cursor: grabbing;
+}
+
+.cmm-title {
+  font-size: 1.12rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg-color, #fff);
+}
+
+.cmm-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Toolbar */
+.cmm-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 18px;
+  gap: 10px;
+  background: rgba(0, 0, 0, 0.15);
+  border-bottom: 1px solid var(--border-color, #33333e);
+}
+
+.cmm-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Form Controls */
+.cmm-select, .cmm-input {
+  background: var(--comfy-input-bg, #141418);
+  color: var(--fg-color, #eee);
+  border: 1px solid var(--border-color, #3a3a46);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.08s ease;
+}
+
+.cmm-select:focus, .cmm-input:focus {
+  border-color: #3b82f6;
+}
+
+.cmm-btn {
+  background: #2a2a35;
+  color: #eee;
+  border: 1px solid var(--border-color, #444);
+  border-radius: 6px;
+  padding: 7px 14px;
+  font-size: 0.88rem;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background-color 0.08s ease, border-color 0.08s ease, color 0.08s ease;
+}
+
+.cmm-btn:hover {
+  background: #3a3a48;
+  border-color: #555;
+  color: #fff;
+}
+
+.cmm-btn-primary {
+  background: #2563eb;
+  border-color: #3b82f6;
+  color: #fff;
+}
+.cmm-btn-primary:hover {
+  background: #1d4ed8;
+}
+
+.cmm-btn-danger {
+  background: #991b1b;
+  border-color: #dc2626;
+  color: #fff;
+}
+.cmm-btn-danger:hover {
+  background: #7f1d1d;
+}
+
+.cmm-btn-icon {
+  padding: 7px;
+  border-radius: 6px;
+}
+
+/* Content Body */
+.cmm-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px;
+}
+
+/* Model Grid */
+.cmm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+/* Model Card - Zero position jump, fast highlight */
+.cmm-card {
+  background: #252530;
+  border: 1px solid #353545;
+  border-radius: 10px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+  transition: border-color 0.05s ease, background-color 0.05s ease;
+  position: relative;
+}
+
+.cmm-card:hover {
+  border-color: #3b82f6;
+  background: #2b2b3a;
+}
+
+.cmm-card-media {
+  width: 100%;
+  aspect-ratio: 1;
+  background: #16161c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+}
+
+.cmm-card-media img, .cmm-card-media video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cmm-card-placeholder {
+  font-size: 3rem;
+  opacity: 0.3;
+}
+
+.cmm-card-info {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #202029;
+}
+
+.cmm-card-title {
+  font-weight: 600;
+  font-size: 0.92rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #fff;
+}
+
+.cmm-card-sub {
+  font-size: 0.78rem;
+  color: #888899;
+  display: flex;
+  justify-content: space-between;
+}
+
+.cmm-folder-card {
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  background: #252535;
+}
+
+.cmm-folder-card:hover {
+  border-color: #f59e0b;
+  background: #2c2c40;
+}
+
+.cmm-folder-icon {
+  font-size: 2.5rem;
+  color: #f59e0b;
+  margin-bottom: 8px;
+}
+
+/* Detail Modal Layout */
+.cmm-detail-layout {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 20px;
+  height: 100%;
+}
+
+.cmm-detail-left {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Preview Box - No side/top letterbox bars */
+.cmm-preview-box {
+  width: 100%;
+  max-height: 380px;
+  background: transparent;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  border: 1px solid #333344;
+}
+
+.cmm-preview-box img, .cmm-preview-box video {
+  width: 100%;
+  max-height: 380px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+/* Premium Segmented / Pill Tabs */
+.cmm-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  margin-bottom: 14px;
+}
+
+.cmm-tab {
+  padding: 7px 16px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: #9ca3af;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.1s ease;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.cmm-tab:hover {
+  color: #f3f4f6;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.cmm-tab.active {
+  color: #fff;
+  background: #2563eb;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);
+}
+
+.cmm-tab[data-tab="danger"].active {
+  background: #dc2626;
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.35);
+}
+
+/* Progress bar */
+.cmm-progress-bar {
+  width: 100%;
+  height: 8px;
+  background: #222;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.cmm-progress-fill {
+  height: 100%;
+  background: #3b82f6;
+  width: 0%;
+  transition: width 0.2s ease;
+}
+
+/* Download Task Item */
+.cmm-task-item {
+  background: #22222c;
+  border: 1px solid #333342;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cmm-task-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Dropzone */
+.cmm-dropzone {
+  border: 2px dashed #444;
+  border-radius: 12px;
+  padding: 40px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.cmm-dropzone:hover {
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.cmm-badge {
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: #334;
+  color: #aac;
+}
+
+/* Toggle Switch Styling */
+.cmm-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.cmm-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.cmm-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #374151;
+  transition: .2s;
+  border-radius: 24px;
+}
+
+.cmm-slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: #fff;
+  transition: .2s;
+  border-radius: 50%;
+}
+
+input:checked + .cmm-slider {
+  background-color: #2563eb;
+}
+
+input:checked + .cmm-slider:before {
+  transform: translateX(20px);
+}
+

@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import yaml
 import shutil
@@ -9,6 +10,17 @@ import traceback
 import configparser
 import functools
 import mimetypes
+
+
+def sanitize_filename(filename: str) -> str:
+    if not filename:
+        return "_"
+    invalid_chars = r'[\/\?<>\\:\*\|"]'
+    sanitized = re.sub(invalid_chars, '_', str(filename))
+    sanitized = sanitized.strip('. ')
+    if not sanitized:
+        sanitized = '_'
+    return sanitized
 
 import comfy.utils
 import folder_paths
@@ -256,7 +268,18 @@ def get_model_all_previews(model_path: str) -> list[str]:
     """Get all preview files for a model"""
     base_dirname = os.path.dirname(model_path)
     basename = os.path.splitext(os.path.basename(model_path))[0]
-    return _check_preview_variants(base_dirname, basename, PREVIEW_EXTENSIONS)
+    
+    basenames = [basename]
+    for suffix in [".download", ".task"]:
+        if basename.endswith(suffix):
+            basenames.append(basename[:-len(suffix)])
+        elif "." in basename:
+            basenames.append(basename.split(".")[0])
+
+    found = []
+    for b in set(basenames):
+        found.extend(_check_preview_variants(base_dirname, b, PREVIEW_EXTENSIONS))
+    return list(set(found))
 
 
 def get_model_preview_name(model_path: str) -> str:
@@ -264,16 +287,24 @@ def get_model_preview_name(model_path: str) -> str:
     base_dirname = os.path.dirname(model_path)
     basename = os.path.splitext(os.path.basename(model_path))[0]
     
-    for ext in PREVIEW_EXTENSIONS:
-        # Check direct match first
-        preview_name = f"{basename}{ext}"
-        if os.path.isfile(join_path(base_dirname, preview_name)):
-            return preview_name
-        
-        # Check preview variant
-        preview_name = f"{basename}.preview{ext}"
-        if os.path.isfile(join_path(base_dirname, preview_name)):
-            return preview_name
+    basenames = [basename]
+    for suffix in [".download", ".task"]:
+        if basename.endswith(suffix):
+            basenames.append(basename[:-len(suffix)])
+        elif "." in basename:
+            basenames.append(basename.split(".")[0])
+            
+    for b in set(basenames):
+        for ext in PREVIEW_EXTENSIONS:
+            # Check direct match first
+            preview_name = f"{b}{ext}"
+            if os.path.isfile(join_path(base_dirname, preview_name)):
+                return preview_name
+            
+            # Check preview variant
+            preview_name = f"{b}.preview{ext}"
+            if os.path.isfile(join_path(base_dirname, preview_name)):
+                return preview_name
     
     return "no-preview.png"
 
@@ -294,37 +325,88 @@ def remove_model_preview(model_path: str):
             os.remove(preview_path)
 
 
-def save_model_preview(model_path: str, file_or_url: Any, platform: Optional[str] = None):
-    """Save a preview file for a model. Images -> WebP, videos -> original format"""
-    
+import subprocess
+
+
+def is_ffmpeg_installed() -> bool:
+    """Check if FFmpeg is installed and accessible via system PATH."""
+    try:
+        if shutil.which("ffmpeg"):
+            return True
+        res = subprocess.run(["ffmpeg", "-version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return res.returncode == 0
+    except Exception:
+        return False
+
+
+def convert_video_to_webp(video_path: str, webp_path: str, quality: int = 85, compression_level: int = 2) -> bool:
+    """Convert a video file to an animated WebP file using FFmpeg."""
+    if not os.path.isfile(video_path):
+        return False
+    try:
+        cmd = [
+            "ffmpeg", "-y", "-i", video_path,
+            "-vcodec", "libwebp",
+            "-q:v", str(quality),
+            "-compression_level", str(compression_level),
+            "-loop", "0",
+            webp_path
+        ]
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
+        if res.returncode == 0 and os.path.isfile(webp_path) and os.path.getsize(webp_path) > 0:
+            return True
+        return False
+    except Exception as e:
+        print_error(f"FFmpeg video conversion failed: {e}")
+        return False
+
+
+def save_model_preview(model_path: str, file_or_url: Any, platform: Optional[str] = None, request: Optional[web.Request] = None):
+    """Save a preview file for a model. Images -> WebP (85%), videos -> WebP via FFmpeg if enabled."""
+    if not file_or_url:
+        return
+
+    should_convert_video = False
+    if request:
+        try:
+            should_convert_video = bool(get_setting_value(request, "scan.convert_video_to_webp", False))
+        except Exception:
+            pass
+
     # Download file if it is a URL
-    if type(file_or_url) is str:
-        url = file_or_url
+    if isinstance(file_or_url, str):
+        url = file_or_url.strip()
+        if not url:
+            return
 
         try:
-            response = requests.get(url)
+            session = create_request_session(platform=platform)
+            response = session.get(url, timeout=15)
             response.raise_for_status()
             
             # Determine content type from response headers or URL extension
             content_type = response.headers.get('content-type', '')
             if not content_type:
-                # Fallback to URL extension detection
                 content_type = resolve_file_content_type(url) or ''
             
             content = response.content
             
-            if content_type.startswith("video/"):
-                # Save video in original format
-                # Try to get extension from URL or content-type
+            if content_type.startswith("video/") or _get_video_extension_from_url(url):
                 ext = _get_video_extension_from_url(url) or _get_extension_from_content_type(content_type) or '.mp4'
-                preview_path = _get_preview_path(model_path, ext)
-                with open(preview_path, 'wb') as f:
+                tmp_video_path = _get_preview_path(model_path, ext)
+                with open(tmp_video_path, 'wb') as f:
                     f.write(content)
+
+                if should_convert_video and is_ffmpeg_installed():
+                    webp_path = _get_preview_path(model_path, ".webp")
+                    if convert_video_to_webp(tmp_video_path, webp_path, quality=85, compression_level=2):
+                        if os.path.exists(tmp_video_path) and tmp_video_path != webp_path:
+                            os.remove(tmp_video_path)
             else:
-                # Default to image processing for unknown or image types
+                # Default to WebP image (quality 85%)
                 preview_path = _get_preview_path(model_path, ".webp")
                 image = Image.open(BytesIO(content))
-                image.save(preview_path, "WEBP")
+                image.save(preview_path, "WEBP", quality=85)
 
         except Exception as e:
             print_error(f"Failed to download preview: {e}")
@@ -340,18 +422,23 @@ def save_model_preview(model_path: str, file_or_url: Any, platform: Optional[str
         filename: str = getattr(file_obj, 'filename', '')
         
         if content_type.startswith("video/"):
-            # Save video in original format for now, consider transcoding to webm to follow the pattern for images converting to webp
             ext = os.path.splitext(filename.lower())[1] or '.mp4'
-            preview_path = _get_preview_path(model_path, ext)
+            tmp_video_path = _get_preview_path(model_path, ext)
             file_obj.file.seek(0)
             content = file_obj.file.read()
-            with open(preview_path, 'wb') as f:
+            with open(tmp_video_path, 'wb') as f:
                 f.write(content)
+
+            if should_convert_video and is_ffmpeg_installed():
+                webp_path = _get_preview_path(model_path, ".webp")
+                if convert_video_to_webp(tmp_video_path, webp_path, quality=85, compression_level=2):
+                    if os.path.exists(tmp_video_path) and tmp_video_path != webp_path:
+                        os.remove(tmp_video_path)
         elif content_type.startswith("image/"):
-            # Convert image to webp
+            # Convert image to webp (quality 85%)
             preview_path = _get_preview_path(model_path, ".webp")
             image = Image.open(file_obj.file)
-            image.save(preview_path, "WEBP")
+            image.save(preview_path, "WEBP", quality=85)
         else:
             raise RuntimeError(f"FileTypeError: expected image or video, got {content_type}")
 
@@ -527,3 +614,84 @@ def calculate_sha256(path, buffer_size=1024 * 1024):
                 break
             sha256.update(data)
     return sha256.hexdigest()
+
+
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
+
+
+def get_proxy_url(
+    request: Optional[web.Request] = None,
+    platform: Optional[str] = None,
+    traffic_type: str = "api"
+) -> str:
+    if not request:
+        return ""
+    try:
+        if platform == "civitai":
+            enabled = get_setting_value(request, "proxy.civitai", False)
+        elif platform == "huggingface":
+            enabled = get_setting_value(request, "proxy.huggingface", False)
+        else:
+            enabled = get_setting_value(request, "proxy.civitai", False) or get_setting_value(request, "proxy.huggingface", False)
+
+        if not enabled:
+            return ""
+
+        scope = get_setting_value(request, "proxy.scope", "api_only")
+        if traffic_type == "download" and scope == "api_only":
+            return ""
+
+        host = str(get_setting_value(request, "proxy.host", "") or "").strip()
+        port = str(get_setting_value(request, "proxy.port", "1080") or "1080").strip()
+        username = str(get_setting_value(request, "proxy.username", "") or "").strip()
+        password = str(get_setting_value(request, "proxy.password", "") or "").strip()
+
+        if not host:
+            return str(get_setting_value(request, "proxy.url", "") or "").strip()
+
+        if username and password:
+            return f"socks5h://{username}:{password}@{host}:{port}"
+        elif username:
+            return f"socks5h://{username}@{host}:{port}"
+        else:
+            return f"socks5h://{host}:{port}"
+    except Exception:
+        return ""
+
+
+def create_request_session(
+    request: Optional[web.Request] = None,
+    platform: Optional[str] = None,
+    traffic_type: str = "api"
+) -> requests.Session:
+    session = requests.Session()
+    retries = Retry(
+        total=3,
+        backoff_factor=1,
+        status_forcelist=[500, 502, 503, 504],
+        raise_on_status=False
+    )
+    adapter = HTTPAdapter(max_retries=retries)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+
+    session.headers.update({
+        "User-Agent": config.user_agent,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5"
+    })
+
+    if request:
+        try:
+            proxy_url = get_proxy_url(request, platform=platform, traffic_type=traffic_type)
+            if proxy_url:
+                session.proxies.update({
+                    "http": proxy_url,
+                    "https": proxy_url
+                })
+        except Exception:
+            pass
+
+    return session
+

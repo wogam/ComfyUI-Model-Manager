@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 from . import utils
+from . import config
 
 
 class ModelManager:
@@ -110,6 +111,168 @@ class ModelManager:
                 return web.json_response({"success": True})
             except Exception as e:
                 error_msg = f"Delete model failed: {str(e)}"
+                utils.print_error(error_msg)
+                return web.json_response({"success": False, "error": error_msg})
+
+        @routes.get("/model-manager/settings")
+        async def get_settings(request):
+            try:
+                civitai_key = utils.get_setting_value(request, "api_key.civitai", "")
+                hf_key = utils.get_setting_value(request, "api_key.huggingface", "")
+                max_tasks = utils.get_setting_value(request, "download.max_task_count", 3)
+                include_hidden = utils.get_setting_value(request, "scan.include_hidden_files", False)
+                convert_video_webp = utils.get_setting_value(request, "scan.convert_video_to_webp", False)
+                proxy_civitai = utils.get_setting_value(request, "proxy.civitai", False)
+                proxy_huggingface = utils.get_setting_value(request, "proxy.huggingface", False)
+                proxy_scope = utils.get_setting_value(request, "proxy.scope", "api_only")
+                proxy_host = utils.get_setting_value(request, "proxy.host", "")
+                proxy_port = utils.get_setting_value(request, "proxy.port", "1080")
+                proxy_username = utils.get_setting_value(request, "proxy.username", "")
+                proxy_password = utils.get_setting_value(request, "proxy.password", "")
+                proxy_url = utils.get_setting_value(request, "proxy.url", "")
+
+                return web.json_response({
+                    "success": True,
+                    "data": {
+                        "civitai_api_key": civitai_key or "",
+                        "huggingface_api_key": hf_key or "",
+                        "max_task_count": max_tasks or 3,
+                        "include_hidden_files": bool(include_hidden),
+                        "convert_video_to_webp": bool(convert_video_webp),
+                        "proxy_civitai": bool(proxy_civitai),
+                        "proxy_huggingface": bool(proxy_huggingface),
+                        "proxy_scope": proxy_scope or "api_only",
+                        "proxy_host": proxy_host or "",
+                        "proxy_port": proxy_port or "1080",
+                        "proxy_username": proxy_username or "",
+                        "proxy_password": proxy_password or "",
+                        "proxy_url": proxy_url or "",
+                    }
+                })
+            except Exception as e:
+                error_msg = f"Get settings failed: {str(e)}"
+                utils.print_error(error_msg)
+                return web.json_response({"success": False, "error": error_msg})
+
+        @routes.post("/model-manager/settings")
+        async def update_settings(request):
+            try:
+                data = await request.json()
+                if "civitai_api_key" in data:
+                    utils.set_setting_value(request, "api_key.civitai", data["civitai_api_key"])
+                if "huggingface_api_key" in data:
+                    utils.set_setting_value(request, "api_key.huggingface", data["huggingface_api_key"])
+                if "max_task_count" in data:
+                    utils.set_setting_value(request, "download.max_task_count", int(data["max_task_count"]))
+                if "include_hidden_files" in data:
+                    utils.set_setting_value(request, "scan.include_hidden_files", bool(data["include_hidden_files"]))
+                if "convert_video_to_webp" in data:
+                    utils.set_setting_value(request, "scan.convert_video_to_webp", bool(data["convert_video_to_webp"]))
+                if "proxy_civitai" in data:
+                    utils.set_setting_value(request, "proxy.civitai", bool(data["proxy_civitai"]))
+                if "proxy_huggingface" in data:
+                    utils.set_setting_value(request, "proxy.huggingface", bool(data["proxy_huggingface"]))
+                if "proxy_scope" in data:
+                    utils.set_setting_value(request, "proxy.scope", str(data["proxy_scope"]))
+                if "proxy_host" in data:
+                    utils.set_setting_value(request, "proxy.host", str(data["proxy_host"]))
+                if "proxy_port" in data:
+                    utils.set_setting_value(request, "proxy.port", str(data["proxy_port"]))
+                if "proxy_username" in data:
+                    utils.set_setting_value(request, "proxy.username", str(data["proxy_username"]))
+                if "proxy_password" in data:
+                    utils.set_setting_value(request, "proxy.password", str(data["proxy_password"]))
+                if "proxy_url" in data:
+                    utils.set_setting_value(request, "proxy.url", str(data["proxy_url"]))
+                return web.json_response({"success": True})
+            except Exception as e:
+                error_msg = f"Update settings failed: {str(e)}"
+                utils.print_error(error_msg)
+                return web.json_response({"success": False, "error": error_msg})
+
+        @routes.post("/model-manager/settings/check-ffmpeg")
+        async def check_ffmpeg_status(request):
+            installed = utils.is_ffmpeg_installed()
+            if installed:
+                return web.json_response({"success": True, "installed": True, "message": "FFmpeg is installed and ready in PATH!"})
+            else:
+                return web.json_response({"success": False, "installed": False, "error": "FFmpeg was not found in system PATH or environment."})
+
+        @routes.post("/model-manager/settings/test-proxy")
+        async def test_proxy_connection(request):
+            try:
+                data = await request.json()
+                host = str(data.get("host", "")).strip()
+                port = str(data.get("port", "1080")).strip()
+                username = str(data.get("username", "")).strip()
+                password = str(data.get("password", "")).strip()
+
+                if not host:
+                    return web.json_response({"success": False, "error": "Proxy host/server is required for testing."})
+
+                if username and password:
+                    proxy_url = f"socks5h://{username}:{password}@{host}:{port}"
+                elif username:
+                    proxy_url = f"socks5h://{username}@{host}:{port}"
+                else:
+                    proxy_url = f"socks5h://{host}:{port}"
+
+                import requests
+                session = requests.Session()
+                session.proxies.update({"http": proxy_url, "https": proxy_url})
+                session.headers.update({"User-Agent": config.user_agent})
+
+                res = session.get("https://civitai.com/api/v1/models?limit=1", timeout=10)
+                if res.status_code == 200:
+                    return web.json_response({"success": True, "message": "Proxy connection successful! Reached Civitai API."})
+                else:
+                    return web.json_response({"success": False, "error": f"Proxy connected but endpoint returned HTTP {res.status_code}"})
+            except Exception as e:
+                return web.json_response({"success": False, "error": f"Proxy test failed: {str(e)}"})
+
+        @routes.post("/model-manager/model/{type}/{index}/{filename:.*}/scan")
+        async def scan_single_model_info(request):
+            model_type = request.match_info.get("type", None)
+            path_index = int(request.match_info.get("index", None))
+            filename = request.match_info.get("filename", None)
+
+            try:
+                model_path = utils.get_valid_full_path(model_type, path_index, filename)
+                if not model_path or not os.path.isfile(model_path):
+                    raise RuntimeError(f"Model file {filename} not found")
+
+                from .information import CivitaiModelSearcher
+                hash_value = utils.calculate_sha256(model_path)
+                model_info = CivitaiModelSearcher().search_by_hash(hash_value, request=request)
+
+                if model_info:
+                    preview_url_list = model_info.get("preview", [])
+                    preview_url = preview_url_list[0] if preview_url_list else None
+                    if preview_url:
+                        utils.save_model_preview(model_path, preview_url, request=request)
+
+                    description = model_info.get("description", None)
+                    if description:
+                        utils.save_model_description(model_path, description)
+
+                # Convert existing video preview to WebP if enabled
+                should_convert = utils.get_setting_value(request, "scan.convert_video_to_webp", False)
+                if should_convert and utils.is_ffmpeg_installed():
+                    existing_preview = utils.get_model_preview_name(model_path)
+                    if existing_preview and existing_preview != "no-preview.png":
+                        ext = os.path.splitext(existing_preview)[1].lower()
+                        if ext in utils.VIDEO_EXTENSIONS:
+                            base_dir = os.path.dirname(model_path)
+                            video_file = utils.join_path(base_dir, existing_preview)
+                            webp_file = utils.join_path(base_dir, f"{os.path.splitext(os.path.basename(model_path))[0]}.webp")
+                            if utils.convert_video_to_webp(video_file, webp_file, quality=85, compression_level=2):
+                                if os.path.exists(video_file) and video_file != webp_file:
+                                    os.remove(video_file)
+
+                updated_info = self.get_model_info(model_path)
+                return web.json_response({"success": True, "data": updated_info})
+            except Exception as e:
+                error_msg = f"Single model scan failed: {str(e)}"
                 utils.print_error(error_msg)
                 return web.json_response({"success": False, "error": error_msg})
 
