@@ -433,8 +433,7 @@ class Information:
         @routes.get("/model-manager/preview/{type}/{index}/{filename:.*}")
         async def read_model_preview(request):
             """
-            Get the file stream of the specified preview
-            If the file does not exist, no-preview.png is returned.
+            Get the file stream of the specified preview.
 
             :param type: The type of the model. eg.checkpoints, loras, vae, etc.
             :param index: The index of the model folders.
@@ -444,8 +443,6 @@ class Information:
             index = int(request.match_info.get("index", None))
             filename = request.match_info.get("filename", None)
 
-            extension_uri = config.extension_uri
-
             try:
                 folders = folder_paths.get_folder_paths(model_type)
                 base_path = folders[index]
@@ -454,11 +451,11 @@ class Information:
                 if preview_name:
                     dir_name = os.path.dirname(abs_path)
                     abs_path = utils.join_path(dir_name, preview_name)
-            except:
-                abs_path = extension_uri
+            except Exception:
+                return web.Response(status=404, text="Preview not found")
 
             if not os.path.isfile(abs_path):
-                abs_path = utils.join_path(extension_uri, "assets", "no-preview.png")
+                return web.Response(status=404, text="Preview not found")
 
             # Determine content type from the actual file
             content_type = utils.resolve_file_content_type(abs_path)
@@ -474,13 +471,11 @@ class Information:
         @routes.get("/model-manager/preview/download/{filename}")
         async def read_download_preview(request):
             filename = request.match_info.get("filename", None)
-            extension_uri = config.extension_uri
-
             download_path = utils.get_download_path()
             preview_path = utils.join_path(download_path, filename)
 
             if not os.path.isfile(preview_path):
-                preview_path = utils.join_path(extension_uri, "assets", "no-preview.png")
+                return web.Response(status=404, text="Preview not found")
 
             return web.FileResponse(preview_path)
 
@@ -605,9 +600,8 @@ class Information:
                 base_path = os.path.dirname(abs_model_path)
 
                 image_name = utils.get_model_preview_name(abs_model_path)
-                abs_image_path = utils.join_path(base_path, image_name)
-
-                has_preview = os.path.isfile(abs_image_path)
+                abs_image_path = utils.join_path(base_path, image_name) if image_name else None
+                has_preview = os.path.isfile(abs_image_path) if abs_image_path else False
 
                 description_name = utils.get_model_description_name(abs_model_path)
                 abs_description_path = utils.join_path(base_path, description_name) if description_name else None

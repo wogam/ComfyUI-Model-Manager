@@ -259,7 +259,7 @@ class ModelManager:
                 should_convert = utils.get_setting_value(request, "scan.convert_video_to_webp", False)
                 if should_convert and utils.is_ffmpeg_installed():
                     existing_preview = utils.get_model_preview_name(model_path)
-                    if existing_preview and existing_preview != "no-preview.png":
+                    if existing_preview:
                         ext = os.path.splitext(existing_preview)[1].lower()
                         if ext in utils.VIDEO_EXTENSIONS:
                             base_dir = os.path.dirname(model_path)
@@ -297,8 +297,9 @@ class ModelManager:
             model_preview = None
             if is_file:
                 preview_name = utils.get_model_preview_name(entry.path)
-                preview_ext = f".{preview_name.split('.')[-1]}"
-                model_preview = f"/model-manager/preview/{folder}/{path_index}/{relative_path.replace(extension, preview_ext)}"
+                if preview_name:
+                    preview_ext = f".{preview_name.split('.')[-1]}"
+                    model_preview = f"/model-manager/preview/{folder}/{path_index}/{relative_path.replace(extension, preview_ext)}"
 
             if not os.path.exists(entry.path):
                 utils.print_error(f"{entry.path} is not file or directory.")

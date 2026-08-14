@@ -282,8 +282,8 @@ def get_model_all_previews(model_path: str) -> list[str]:
     return list(set(found))
 
 
-def get_model_preview_name(model_path: str) -> str:
-    """Get the first available preview file or 'no-preview.png' if none found"""
+def get_model_preview_name(model_path: str) -> str | None:
+    """Get the first available preview file or None if none found"""
     base_dirname = os.path.dirname(model_path)
     basename = os.path.splitext(os.path.basename(model_path))[0]
     
@@ -306,7 +306,7 @@ def get_model_preview_name(model_path: str) -> str:
             if os.path.isfile(join_path(base_dirname, preview_name)):
                 return preview_name
     
-    return "no-preview.png"
+    return None
 
 
 from PIL import Image

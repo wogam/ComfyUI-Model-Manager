@@ -38,6 +38,19 @@ function formatDate(timestamp) {
   return d.toLocaleDateString() + " " + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+function getNoPreviewHTML(text = "No Preview") {
+  return `
+    <div class="cmm-no-preview">
+      <svg class="cmm-no-preview-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="3" ry="3"></rect>
+        <circle cx="8.5" cy="8.5" r="1.5"></circle>
+        <polyline points="21 15 16 10 5 21"></polyline>
+      </svg>
+      <span class="cmm-no-preview-text">${text}</span>
+    </div>
+  `;
+}
+
 function createOverlay(extraClass = "") {
   const overlay = document.createElement("div");
   const isSub = extraClass.includes("cmm-dialog-sub");
@@ -492,12 +505,12 @@ async function openModelManagerDialog() {
     if (model.preview) {
       const ext = model.preview.split(".").pop().toLowerCase();
       if (["mp4", "webm", "mov"].includes(ext)) {
-        mediaHTML = `<video src="${model.preview}" autoplay loop muted playsinline></video>`;
+        mediaHTML = `<video src="${model.preview}" autoplay loop muted playsinline onerror="this.onerror=null; this.parentElement.innerHTML=getNoPreviewHTML();"></video>`;
       } else {
-        mediaHTML = `<img src="${model.preview}" loading="lazy" alt="preview" />`;
+        mediaHTML = `<img src="${model.preview}" loading="lazy" alt="preview" onerror="this.onerror=null; this.parentElement.innerHTML=getNoPreviewHTML();" />`;
       }
     } else {
-      mediaHTML = `<div class="cmm-card-placeholder">📦</div>`;
+      mediaHTML = getNoPreviewHTML();
     }
 
     const fullName = model.subFolder ? `${model.subFolder}/${model.basename}${model.extension}` : `${model.basename}${model.extension}`;
@@ -644,12 +657,12 @@ async function openModelDetailModal(model, onRefresh) {
     if (previewSrc) {
       const ext = previewSrc.split(".").pop().toLowerCase();
       if (["mp4", "webm", "mov"].includes(ext)) {
-        previewBox.innerHTML = `<video src="${previewSrc}" controls autoplay loop style="width:100%; height:100%; object-fit:cover; border-radius:6px;"></video>`;
+        previewBox.innerHTML = `<video src="${previewSrc}" controls autoplay loop style="width:100%; height:100%; object-fit:cover; border-radius:6px;" onerror="this.onerror=null; this.parentElement.innerHTML=getNoPreviewHTML();"></video>`;
       } else {
-        previewBox.innerHTML = `<img src="${previewSrc}" style="width:100%; max-height:380px; object-fit:cover; border-radius:6px;" alt="Preview" />`;
+        previewBox.innerHTML = `<img src="${previewSrc}" style="width:100%; max-height:380px; object-fit:cover; border-radius:6px;" alt="Preview" onerror="this.onerror=null; this.parentElement.innerHTML=getNoPreviewHTML();" />`;
       }
     } else {
-      previewBox.innerHTML = `<div style="font-size:3rem; opacity:0.3; padding:40px;">📦</div>`;
+      previewBox.innerHTML = getNoPreviewHTML();
     }
   }
 
