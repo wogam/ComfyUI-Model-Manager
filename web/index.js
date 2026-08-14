@@ -190,69 +190,202 @@ function extractFrontmatter(desc) {
 function parseMarkdown(md) {
   if (!md || !md.trim()) return "<p style='color:#777; font-style:italic;'>No description provided.</p>";
 
-  let html = md
+  // 1. Extract Fenced Code Blocks (```code```) to protect them from all other parsing
+  const codeBlocks = [];
+  let text = md.replace(/```([a-zA-Z0-9_-]*)\n?([\s\S]*?)```/g, (match, lang, code) => {
+    const idx = codeBlocks.length;
+    const escapedCode = code
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    codeBlocks.push(`<pre style="background:#111118; padding:12px; border-radius:6px; overflow-x:auto; font-family:monospace; font-size:0.85rem; border:1px solid #333; margin:14px 0; line-height:1.45; color:#e2e8f0; white-space:pre;"><code>${escapedCode.trim()}</code></pre>`);
+    return `\n\n@@@CODEBLOCK_${idx}@@@\n\n`;
+  });
+
+  // 2. Extract Inline Code (`code`)
+  const inlineCodes = [];
+  text = text.replace(/`([^`\n]+)`/g, (match, code) => {
+    const idx = inlineCodes.length;
+    const escapedCode = code
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    inlineCodes.push(`<code style="background:#1a1a24; padding:2px 6px; border-radius:4px; font-family:monospace; color:#93c5fd; font-size:0.9em;">${escapedCode}</code>`);
+    return `@@@INLINECODE_${idx}@@@`;
+  });
+
+  // 3. HTML escape remaining characters
+  text = text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 
-  // Code blocks ```code```
-  html = html.replace(/```([\s\S]*?)```/g, (match, code) => {
-    return `<pre style="background:#111118; padding:10px; border-radius:6px; overflow-x:auto; font-family:monospace; font-size:0.85rem; border:1px solid #333; margin:8px 0;"><code>${code.trim()}</code></pre>`;
+  // 4. Autolinks: <https://...>
+  text = text.replace(/&lt;((?:https?|mailto):[^\s&>]+)&gt;/gi, (match, url) => {
+    let targetUrl = url;
+    if (/civitai\.(com|green)/i.test(targetUrl)) {
+      targetUrl = targetUrl.replace(/civitai\.(com|green)/gi, "civitai.red");
+    }
+    return `<a href="${targetUrl}" target="_blank" rel="noopener noreferrer" style="color:#60a5fa; text-decoration:underline;">${url}</a>`;
   });
 
-  // Inline code `code`
-  html = html.replace(/`([^`]+)`/g, '<code style="background:#1a1a24; padding:2px 6px; border-radius:4px; font-family:monospace; color:#93c5fd;">$1</code>');
+  // 5. Images: ![alt](url "optional title")
+  text = text.replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+["']([^"']*)["'])?\)/g, (match, alt, url, title) => {
+    const titleAttr = title ? ` title="${title}"` : "";
+    return `<img src="${url.trim()}" alt="${alt}"${titleAttr} style="max-width:100%; height:auto; border-radius:6px; margin:14px 0; display:block;" loading="lazy" />`;
+  });
 
-  // Horizontal rules (---, ***, ___)
-  html = html.replace(/^(?:---|___|\*\*\*)\s*$/gim, '<hr style="border:none; border-top:1px solid #334; margin:14px 0;" />');
-
-  // Headers #, ##, ###
-  html = html.replace(/^### (.*$)/gim, '<h3 style="margin:10px 0 6px 0; font-size:1.05rem; color:#fff;">$1</h3>');
-  html = html.replace(/^## (.*$)/gim, '<h2 style="margin:12px 0 6px 0; font-size:1.2rem; color:#fff; border-bottom:1px solid #334; padding-bottom:4px;">$1</h2>');
-  html = html.replace(/^# (.*$)/gim, '<h1 style="margin:14px 0 8px 0; font-size:1.35rem; color:#fff; border-bottom:1px solid #445; padding-bottom:6px;">$1</h1>');
-
-  // Bold & Italic
-  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-
-  // Links [text](url)
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
+  // 6. Links: [text](url "optional title")
+  text = text.replace(/\[([^\]]+)\]\(([^)\s]+)(?:\s+["']([^"']*)["'])?\)/g, (match, linkText, url, title) => {
     let targetUrl = url;
     if (typeof targetUrl === "string" && /civitai\.(com|green)/i.test(targetUrl)) {
       targetUrl = targetUrl.replace(/civitai\.(com|green)/gi, "civitai.red");
     }
-    return `<a href="${targetUrl}" target="_blank" rel="noopener noreferrer" style="color:#60a5fa; text-decoration:underline;">${text}</a>`;
+    const titleAttr = title ? ` title="${title}"` : "";
+    return `<a href="${targetUrl}"${titleAttr} target="_blank" rel="noopener noreferrer" style="color:#60a5fa; text-decoration:underline;">${linkText}</a>`;
   });
 
-  // Bullet lists (- or *)
-  html = html.replace(/^\s*[-*]\s+(.*$)/gim, '<li style="margin-left:18px;">$1</li>');
+  // 7. Setext Headings (Heading 1 ===, Heading 2 ---)
+  text = text.replace(/^([^\n#<>\s][^\n]*)\n=+\s*$/gm, '# $1');
+  text = text.replace(/^([^\n#<>\s][^\n]*)\n-+\s*$/gm, '## $1');
 
-  const lines = html.split("\n");
-  let result = "";
-  let inList = false;
+  // 8. ATX Headings
+  text = text.replace(/^### (.*$)/gm, '<h3 style="margin:18px 0 8px 0; font-size:1.05rem; color:#fff; font-weight:600;">$1</h3>');
+  text = text.replace(/^## (.*$)/gm, '<h2 style="margin:22px 0 10px 0; font-size:1.2rem; color:#fff; font-weight:600; border-bottom:1px solid #2d2d3a; padding-bottom:4px;">$1</h2>');
+  text = text.replace(/^# (.*$)/gm, '<h1 style="margin:24px 0 12px 0; font-size:1.35rem; color:#fff; font-weight:700; border-bottom:1px solid #445; padding-bottom:6px;">$1</h1>');
 
-  for (let line of lines) {
-    if (line.startsWith("<li")) {
-      if (!inList) {
-        result += '<ul style="margin:6px 0; padding-left:6px;">';
-        inList = true;
-      }
-      result += line;
-    } else {
-      if (inList) {
-        result += '</ul>';
-        inList = false;
-      }
-      if (line.trim().length > 0 && !line.startsWith("<h") && !line.startsWith("<pre") && !line.startsWith("<ul") && !line.startsWith("<hr")) {
-        result += `<p style="margin:4px 0; line-height:1.5; color:#d1d5db;">${line}</p>`;
-      } else {
-        result += line;
-      }
+  // 9. Horizontal rules
+  text = text.replace(/^(?:---|___|\*\*\*)\s*$/gm, '<hr style="border:none; border-top:1px solid #334; margin:18px 0;" />');
+
+  // Helper for inline formatting (Bold, Italic, Unescape)
+  function formatInline(str) {
+    let s = str;
+    // Bold & Italic: ***text*** or ___text___
+    s = s.replace(/\*\*\*([^*\n]+)\*\*\*/g, '<strong><em>$1</em></strong>');
+    s = s.replace(/___([^_\n]+)___/g, '<strong><em>$1</em></strong>');
+    // Bold: **text** or __text__
+    s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/__([^_\n]+)__/g, '<strong>$1</strong>');
+    // Italic: *text* or _text_
+    s = s.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
+    s = s.replace(/\b_([^_]+)_\b/g, '<em>$1</em>');
+    // Unescape markdown backslash escapes (e.g. \_, \*, \(, \))
+    s = s.replace(/\\([\\`*_{}\[\]()#+\-.!])/g, "$1");
+    return s;
+  }
+
+  // 10. Block & List & Paragraph processing
+  const lines = text.split("\n");
+  let result = [];
+  let inUl = false;
+  let inOl = false;
+  let currentParagraph = [];
+
+  function flushParagraph() {
+    if (currentParagraph.length > 0) {
+      const formattedLines = currentParagraph.map(formatInline);
+      const content = formattedLines.join("<br />");
+      result.push(`<p style="margin:0 0 14px 0; line-height:1.6; color:#d1d5db;">${content}</p>`);
+      currentParagraph = [];
     }
   }
-  if (inList) result += '</ul>';
 
-  return result;
+  function flushList() {
+    if (inUl) {
+      result.push("</ul>");
+      inUl = false;
+    }
+    if (inOl) {
+      result.push("</ol>");
+      inOl = false;
+    }
+  }
+
+  for (let line of lines) {
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+
+    if (trimmed.startsWith("@@@CODEBLOCK_")) {
+      flushParagraph();
+      flushList();
+      result.push(trimmed);
+      continue;
+    }
+
+    if (/^<h[1-6]/.test(trimmed) || /^<hr/.test(trimmed) || /^<img/.test(trimmed)) {
+      flushParagraph();
+      flushList();
+      result.push(formatInline(trimmed));
+      continue;
+    }
+
+    // Blockquote (> text)
+    const quoteMatch = line.match(/^\s*>\s*(.*)$/);
+    if (quoteMatch) {
+      flushParagraph();
+      flushList();
+      result.push(`<blockquote style="border-left:3px solid #3b82f6; margin:14px 0; padding:6px 14px; color:#9ca3af; background:rgba(59,130,246,0.06); border-radius:0 6px 6px 0;">${formatInline(quoteMatch[1])}</blockquote>`);
+      continue;
+    }
+
+    // Unordered list item (* or - or + followed by space)
+    const ulMatch = line.match(/^\s*[-*+]\s+(.*)$/);
+    if (ulMatch) {
+      flushParagraph();
+      if (inOl) {
+        result.push("</ol>");
+        inOl = false;
+      }
+      if (!inUl) {
+        result.push('<ul style="margin:8px 0 14px 0; padding-left:20px; color:#d1d5db;">');
+        inUl = true;
+      }
+      result.push(`<li style="margin-bottom:6px; line-height:1.5;">${formatInline(ulMatch[1])}</li>`);
+      continue;
+    }
+
+    // Ordered list item (1. 2. etc)
+    const olMatch = line.match(/^\s*\d+\.\s+(.*)$/);
+    if (olMatch) {
+      flushParagraph();
+      if (inUl) {
+        result.push("</ul>");
+        inUl = false;
+      }
+      if (!inOl) {
+        result.push('<ol style="margin:8px 0 14px 0; padding-left:20px; color:#d1d5db;">');
+        inOl = true;
+      }
+      result.push(`<li style="margin-bottom:6px; line-height:1.5;">${formatInline(olMatch[1])}</li>`);
+      continue;
+    }
+
+    // Regular line in paragraph
+    flushList();
+    currentParagraph.push(trimmed);
+  }
+
+  flushParagraph();
+  flushList();
+
+  let htmlOutput = result.join("\n");
+
+  // 11. Restore Code Blocks
+  htmlOutput = htmlOutput.replace(/@@@CODEBLOCK_(\d+)@@@/g, (match, idx) => {
+    return codeBlocks[parseInt(idx, 10)] || "";
+  });
+
+  // 12. Restore Inline Codes
+  htmlOutput = htmlOutput.replace(/@@@INLINECODE_(\d+)@@@/g, (match, idx) => {
+    return inlineCodes[parseInt(idx, 10)] || "";
+  });
+
+  return htmlOutput;
 }
 
 // Global State
