@@ -82,7 +82,12 @@ class CivitaiModelSearcher(ModelSearcher):
         if not model_id:
             return []
 
-        session = utils.create_request_session(request, platform="civitai", traffic_type="api")
+        # Prepare direct session and potential proxy fallback session
+        direct_session = utils.create_request_session(request, platform="civitai", traffic_type="api", disable_proxy=True)
+        proxy_session = None
+        has_proxy = bool(utils.get_proxy_url(request, platform="civitai", traffic_type="api")) if request else False
+        if has_proxy:
+            proxy_session = utils.create_request_session(request, platform="civitai", traffic_type="api")
 
         domains_to_try = [domain]
         if "civitai.red" not in domain:
@@ -93,16 +98,32 @@ class CivitaiModelSearcher(ModelSearcher):
         res_data = None
         last_error = None
 
+        # 1. Attempt direct connection first (fast, bypass proxy instability if unblocked or WARP/VPN is active)
         for d in domains_to_try:
             try:
                 api_url = f"https://{d}/api/v1/models/{model_id}"
-                response = session.get(api_url, timeout=12)
+                response = direct_session.get(api_url, timeout=10)
                 response.raise_for_status()
                 res_data = response.json()
                 domain = d
                 break
             except Exception as e:
                 last_error = e
+
+        # 2. If direct request failed (e.g. 451 legal block / 403 / connection error) and proxy is configured, fallback to proxy
+        if not res_data and proxy_session:
+            utils.print_warning(f"Direct Civitai query failed ({last_error}), retrying via configured proxy fallback...")
+            for d in domains_to_try:
+                try:
+                    api_url = f"https://{d}/api/v1/models/{model_id}"
+                    response = proxy_session.get(api_url, timeout=15)
+                    response.raise_for_status()
+                    res_data = response.json()
+                    domain = d
+                    last_error = None
+                    break
+                except Exception as e:
+                    last_error = e
 
         if not res_data:
             if last_error:
@@ -197,17 +218,37 @@ class CivitaiModelSearcher(ModelSearcher):
         if not hash:
             raise RuntimeError(f"Hash value is empty.")
 
-        session = utils.create_request_session(request, platform="civitai", traffic_type="api")
+        direct_session = utils.create_request_session(request, platform="civitai", traffic_type="api", disable_proxy=True)
+        proxy_session = None
+        has_proxy = bool(utils.get_proxy_url(request, platform="civitai", traffic_type="api")) if request else False
+        if has_proxy:
+            proxy_session = utils.create_request_session(request, platform="civitai", traffic_type="api")
         
         response = None
         last_error = None
+
+        # 1. Attempt direct request first
         for d in ["civitai.red", "civitai.com"]:
             try:
-                response = session.get(f"https://{d}/api/v1/model-versions/by-hash/{hash}", timeout=12)
-                response.raise_for_status()
+                res = direct_session.get(f"https://{d}/api/v1/model-versions/by-hash/{hash}", timeout=10)
+                res.raise_for_status()
+                response = res
                 break
             except Exception as e:
                 last_error = e
+
+        # 2. If direct request failed and proxy is configured, fallback to proxy
+        if (not response or response.status_code != 200) and proxy_session:
+            utils.print_warning(f"Direct Civitai hash lookup failed ({last_error}), retrying via configured proxy fallback...")
+            for d in ["civitai.red", "civitai.com"]:
+                try:
+                    res = proxy_session.get(f"https://{d}/api/v1/model-versions/by-hash/{hash}", timeout=15)
+                    res.raise_for_status()
+                    response = res
+                    last_error = None
+                    break
+                except Exception as e:
+                    last_error = e
 
         if not response or response.status_code != 200:
             if last_error:

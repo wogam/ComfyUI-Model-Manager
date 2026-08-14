@@ -380,7 +380,7 @@ def save_model_preview(model_path: str, file_or_url: Any, platform: Optional[str
             return
 
         try:
-            session = create_request_session(request=request, platform=platform)
+            session = create_request_session(request=request, platform=platform, traffic_type="preview")
             response = session.get(url, timeout=15)
             response.raise_for_status()
             
@@ -657,7 +657,7 @@ def get_proxy_url(
             return ""
 
         scope = get_setting_value(request, "proxy.scope", "api_only")
-        if traffic_type == "download" and scope == "api_only":
+        if traffic_type in ("download", "preview") and scope == "api_only":
             return ""
 
         host = str(get_setting_value(request, "proxy.host", "") or "").strip()
@@ -681,7 +681,8 @@ def get_proxy_url(
 def create_request_session(
     request: Optional[web.Request] = None,
     platform: Optional[str] = None,
-    traffic_type: str = "api"
+    traffic_type: str = "api",
+    disable_proxy: bool = False
 ) -> requests.Session:
     session = requests.Session()
     retries = Retry(
@@ -700,7 +701,7 @@ def create_request_session(
         "Accept-Language": "en-US,en;q=0.5"
     })
 
-    if request:
+    if request and not disable_proxy:
         try:
             proxy_url = get_proxy_url(request, platform=platform, traffic_type=traffic_type)
             if proxy_url:
