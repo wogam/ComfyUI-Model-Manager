@@ -2053,6 +2053,17 @@ async function openSettingsModal(onSaveCallback) {
             </div>
           </div>
 
+          <div style="display:flex; justify-content:space-between; align-items:center; background:#14141d; border:1px solid #282836; border-radius:6px; padding:10px 12px; margin-top:2px;">
+            <div>
+              <div style="font-size:0.86rem; font-weight:600; color:#e0e0e0;">Reuse Proxy Connection (Keep-Alive)</div>
+              <div style="font-size:0.75rem; color:#888;">Reuses persistent connection pool for metadata parsing & bulk URL scans to prevent connection overhead</div>
+            </div>
+            <label class="cmm-switch">
+              <input type="checkbox" id="cmm-set-proxy-reuse" />
+              <span class="cmm-slider"></span>
+            </label>
+          </div>
+
           <div style="display:flex; justify-content:flex-end; margin-top:4px;">
             <button class="cmm-btn" id="cmm-test-proxy-btn" style="font-size:0.82rem;">🧪 Test Proxy Connection</button>
           </div>
@@ -2121,6 +2132,7 @@ async function openSettingsModal(onSaveCallback) {
   const proxyPortInput = dialog.querySelector("#cmm-set-proxy-port");
   const proxyUserInput = dialog.querySelector("#cmm-set-proxy-user");
   const proxyPassInput = dialog.querySelector("#cmm-set-proxy-pass");
+  const proxyReuseCheck = dialog.querySelector("#cmm-set-proxy-reuse");
 
   const convertVideoWebpCheck = dialog.querySelector("#cmm-set-convert-video-webp");
 
@@ -2210,6 +2222,7 @@ async function openSettingsModal(onSaveCallback) {
       proxyPortInput.value = res.data.proxy_port || "1080";
       proxyUserInput.value = res.data.proxy_username || "";
       proxyPassInput.value = res.data.proxy_password || "";
+      proxyReuseCheck.checked = res.data.proxy_reuse_connection !== false;
 
       convertVideoWebpCheck.checked = !!res.data.convert_video_to_webp;
 
@@ -2231,6 +2244,7 @@ async function openSettingsModal(onSaveCallback) {
     const proxy_port = proxyPortInput.value.trim() || "1080";
     const proxy_username = proxyUserInput.value.trim();
     const proxy_password = proxyPassInput.value.trim();
+    const proxy_reuse_connection = proxyReuseCheck.checked;
 
     const convert_video_to_webp = convertVideoWebpCheck.checked;
     const max_task_count = parseInt(dialog.querySelector("#cmm-set-max-tasks").value, 10) || 3;
@@ -2250,6 +2264,7 @@ async function openSettingsModal(onSaveCallback) {
           proxy_port,
           proxy_username,
           proxy_password,
+          proxy_reuse_connection,
           convert_video_to_webp,
           max_task_count,
           include_hidden_files,

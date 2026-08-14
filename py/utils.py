@@ -678,12 +678,48 @@ def get_proxy_url(
         return ""
 
 
+import threading
+
+_session_cache: dict[str, requests.Session] = {}
+_session_cache_lock = threading.Lock()
+
+
+def clear_session_cache():
+    """Close and clear all cached persistent request sessions."""
+    with _session_cache_lock:
+        for s in _session_cache.values():
+            try:
+                s.close()
+            except Exception:
+                pass
+        _session_cache.clear()
+
+
 def create_request_session(
     request: Optional[web.Request] = None,
     platform: Optional[str] = None,
     traffic_type: str = "api",
-    disable_proxy: bool = False
+    disable_proxy: bool = False,
+    force_new: bool = False
 ) -> requests.Session:
+    reuse = False
+    if request and not force_new and traffic_type == "api":
+        reuse = get_setting_value(request, "proxy.reuse_connection", True)
+
+    proxy_url = ""
+    if request and not disable_proxy:
+        try:
+            proxy_url = get_proxy_url(request, platform=platform, traffic_type=traffic_type)
+        except Exception:
+            proxy_url = ""
+
+    cache_key = f"{platform or 'all'}_{traffic_type}_{disable_proxy}_{proxy_url}"
+
+    if reuse:
+        with _session_cache_lock:
+            if cache_key in _session_cache:
+                return _session_cache[cache_key]
+
     session = requests.Session()
     retries = Retry(
         total=3,
@@ -691,7 +727,13 @@ def create_request_session(
         status_forcelist=[500, 502, 503, 504],
         raise_on_status=False
     )
-    adapter = HTTPAdapter(max_retries=retries)
+    # Enable connection pooling with keep-alive across concurrent requests
+    adapter = HTTPAdapter(
+        pool_connections=15,
+        pool_maxsize=15,
+        max_retries=retries,
+        pool_block=False
+    )
     session.mount("http://", adapter)
     session.mount("https://", adapter)
 
@@ -701,16 +743,15 @@ def create_request_session(
         "Accept-Language": "en-US,en;q=0.5"
     })
 
-    if request and not disable_proxy:
-        try:
-            proxy_url = get_proxy_url(request, platform=platform, traffic_type=traffic_type)
-            if proxy_url:
-                session.proxies.update({
-                    "http": proxy_url,
-                    "https": proxy_url
-                })
-        except Exception:
-            pass
+    if proxy_url:
+        session.proxies.update({
+            "http": proxy_url,
+            "https": proxy_url
+        })
+
+    if reuse:
+        with _session_cache_lock:
+            _session_cache[cache_key] = session
 
     return session
 

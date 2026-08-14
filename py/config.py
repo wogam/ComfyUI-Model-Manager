@@ -24,6 +24,7 @@ setting_key = {
         "username": "ModelManager.Proxy.Username",
         "password": "ModelManager.Proxy.Password",
         "url": "ModelManager.Proxy.Url",
+        "reuse_connection": "ModelManager.Proxy.ReuseConnection",
     },
 }
 

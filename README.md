@@ -16,6 +16,7 @@ A lightweight, zero-build native extension for [ComfyUI](https://github.com/comf
 - **🌐 SOCKS5 Proxy & Civitai Fallback Support**:
   - Configurable SOCKS5 Proxy with separate toggles for Civitai and HuggingFace.
   - Flexible proxy routing modes: *API & Metadata Only (Recommended)* or *Route All Traffic*.
+  - **Persistent Connection Reuse (Keep-Alive)**: Toggle to reuse persistent SOCKS5 connection pools for bulk URL parsing and metadata queries without connection re-establishment overhead.
   - Proxy connection test tool (`🧪 Test Proxy Connection`).
   - Automatic fallback to `civitai.red` mirror when `civitai.com` returns HTTP 451 blocks.
 - **🎬 FFmpeg Video to WebP Conversion**:

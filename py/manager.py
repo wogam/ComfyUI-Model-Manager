@@ -130,6 +130,7 @@ class ModelManager:
                 proxy_username = utils.get_setting_value(request, "proxy.username", "")
                 proxy_password = utils.get_setting_value(request, "proxy.password", "")
                 proxy_url = utils.get_setting_value(request, "proxy.url", "")
+                proxy_reuse_connection = utils.get_setting_value(request, "proxy.reuse_connection", True)
 
                 return web.json_response({
                     "success": True,
@@ -147,6 +148,7 @@ class ModelManager:
                         "proxy_username": proxy_username or "",
                         "proxy_password": proxy_password or "",
                         "proxy_url": proxy_url or "",
+                        "proxy_reuse_connection": bool(proxy_reuse_connection),
                     }
                 })
             except Exception as e:
@@ -184,6 +186,12 @@ class ModelManager:
                     utils.set_setting_value(request, "proxy.password", str(data["proxy_password"]))
                 if "proxy_url" in data:
                     utils.set_setting_value(request, "proxy.url", str(data["proxy_url"]))
+                if "proxy_reuse_connection" in data:
+                    utils.set_setting_value(request, "proxy.reuse_connection", bool(data["proxy_reuse_connection"]))
+
+                # Invalidate cached sessions on settings change
+                utils.clear_session_cache()
+
                 return web.json_response({"success": True})
             except Exception as e:
                 error_msg = f"Update settings failed: {str(e)}"

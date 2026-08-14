@@ -288,7 +288,7 @@ class CivitaiModelSearcher(ModelSearcher):
 
 
 class HuggingfaceModelSearcher(ModelSearcher):
-    def search_by_url(self, url: str):
+    def search_by_url(self, url: str, request: Optional[web.Request] = None):
         parsed_url = urlparse(url)
 
         pathname = parsed_url.path
@@ -298,7 +298,8 @@ class HuggingfaceModelSearcher(ModelSearcher):
         model_id = f"{space}/{name}"
         rest_pathname = "/".join(rest_paths)
 
-        response = requests.get(f"https://huggingface.co/api/models/{model_id}")
+        session = utils.create_request_session(request, platform="huggingface", traffic_type="api")
+        response = session.get(f"https://huggingface.co/api/models/{model_id}", timeout=15)
         response.raise_for_status()
         res_data: dict = response.json()
 
