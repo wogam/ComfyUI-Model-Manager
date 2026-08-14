@@ -63,8 +63,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 12px 18px;
-  background: var(--comfy-menu-bg, #282830);
-  border-bottom: 1px solid var(--border-color, #33333e);
+  background: #181822;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
   cursor: grab;
   user-select: none;
 }
@@ -74,12 +74,12 @@
 }
 
 .cmm-title {
-  font-size: 1.12rem;
+  font-size: 1.05rem;
   font-weight: 600;
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--fg-color, #fff);
+  color: #f8fafc;
 }
 
 .cmm-header-actions {
@@ -95,74 +95,95 @@
   align-items: center;
   justify-content: space-between;
   padding: 10px 18px;
-  gap: 10px;
-  background: rgba(0, 0, 0, 0.15);
-  border-bottom: 1px solid var(--border-color, #33333e);
+  gap: 12px;
+  background: #14141c;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
 }
 
 .cmm-toolbar-group {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 /* Form Controls */
 .cmm-select, .cmm-input {
-  background: var(--comfy-input-bg, #141418);
-  color: var(--fg-color, #eee);
-  border: 1px solid var(--border-color, #3a3a46);
+  background: #14141d;
+  color: #f1f5f9;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 6px;
-  padding: 8px 12px;
-  font-size: 0.9rem;
+  padding: 6px 12px;
+  font-size: 0.84rem;
   outline: none;
-  transition: border-color 0.08s ease;
+  transition: all 0.12s ease;
+  box-sizing: border-box;
 }
 
 .cmm-select:focus, .cmm-input:focus {
   border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
 }
 
 .cmm-btn {
-  background: #2a2a35;
-  color: #eee;
-  border: 1px solid var(--border-color, #444);
+  background: #181822;
+  color: #cbd5e1;
+  border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 6px;
-  padding: 7px 14px;
-  font-size: 0.88rem;
+  padding: 6px 13px;
+  font-size: 0.83rem;
   font-weight: 500;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  transition: background-color 0.08s ease, border-color 0.08s ease, color 0.08s ease;
+  transition: all 0.12s ease;
+  user-select: none;
+  box-sizing: border-box;
 }
 
 .cmm-btn:hover {
-  background: #3a3a48;
-  border-color: #555;
-  color: #fff;
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+}
+
+.cmm-btn:active {
+  transform: scale(0.97);
+}
+
+.cmm-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .cmm-btn-primary {
   background: #2563eb;
   border-color: #3b82f6;
-  color: #fff;
+  color: #ffffff;
 }
+
 .cmm-btn-primary:hover {
   background: #1d4ed8;
+  border-color: #60a5fa;
+  color: #ffffff;
 }
 
 .cmm-btn-danger {
-  background: #991b1b;
-  border-color: #dc2626;
-  color: #fff;
+  background: rgba(220, 38, 38, 0.15);
+  border-color: rgba(220, 38, 38, 0.35);
+  color: #fca5a5;
 }
+
 .cmm-btn-danger:hover {
-  background: #7f1d1d;
+  background: #dc2626;
+  border-color: #ef4444;
+  color: #ffffff;
 }
 
 .cmm-btn-icon {
-  padding: 7px;
+  padding: 6px 8px;
   border-radius: 6px;
 }
 
@@ -171,37 +192,40 @@
   flex: 1;
   overflow-y: auto;
   padding: 18px;
+  background: #121218;
 }
 
 /* Model Grid */
 .cmm-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 14px;
 }
 
-/* Model Card - Zero position jump, fast highlight */
+/* Model Card - Subtle elevation, fast hover highlight */
 .cmm-card {
-  background: #252530;
-  border: 1px solid #353545;
-  border-radius: 10px;
+  background: #181824;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   cursor: pointer;
-  transition: border-color 0.05s ease, background-color 0.05s ease;
+  transition: all 0.12s ease;
   position: relative;
 }
 
 .cmm-card:hover {
   border-color: #3b82f6;
-  background: #2b2b3a;
+  background: #1d1d2b;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
 }
 
 .cmm-card-media {
   width: 100%;
   aspect-ratio: 1;
-  background: #16161c;
+  background: #111116;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -216,8 +240,19 @@
 }
 
 .cmm-card-placeholder {
-  font-size: 3rem;
-  opacity: 0.3;
+  font-size: 2.8rem;
+  opacity: 0.25;
+}
+
+/* Section Card Container */
+.cmm-section-card {
+  background: #181824;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 /* No Preview Icon & Text Component */
@@ -231,23 +266,24 @@
   justify-content: center;
   gap: 10px;
   color: #64748b;
-  background: #14141a;
+  background: #121218;
   box-sizing: border-box;
   padding: 16px;
   user-select: none;
 }
 
 .cmm-no-preview-icon {
-  width: 38px;
-  height: 38px;
+  width: 36px;
+  height: 36px;
   opacity: 0.6;
   stroke: currentColor;
 }
 
 .cmm-no-preview-text {
-  font-size: 0.82rem;
+  font-size: 0.81rem;
   font-weight: 500;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.02em;
+}
   opacity: 0.85;
   color: #94a3b8;
 }
@@ -664,19 +700,19 @@
 
 /* Download Task Item */
 .cmm-task-item {
-  background: #22222c;
-  border: 1px solid #333342;
+  background: #181824;
+  border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 8px;
-  padding: 12px 16px;
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition: all 0.12s ease;
 }
 
 .cmm-task-item:hover {
-  border-color: #444456;
-  background: #252532;
+  border-color: rgba(255, 255, 255, 0.14);
+  background: #1d1d2b;
 }
 
 .cmm-task-row {
@@ -688,26 +724,27 @@
 
 /* Dropzone */
 .cmm-dropzone {
-  border: 2px dashed #444;
-  border-radius: 12px;
-  padding: 40px 20px;
+  border: 2px dashed rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  padding: 34px 20px;
   text-align: center;
   cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  background: #14141d;
+  transition: all 0.15s ease;
 }
 
 .cmm-dropzone:hover {
   border-color: #3b82f6;
-  background: rgba(59, 130, 246, 0.05);
+  background: rgba(59, 130, 246, 0.04);
 }
 
 .cmm-badge {
-  padding: 4px 10px;
-  border-radius: 12px;
+  padding: 2px 8px;
+  border-radius: 4px;
   font-size: 0.75rem;
   font-weight: 600;
-  background: #334;
-  color: #aac;
+  background: rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -767,20 +804,22 @@
 }
 
 .cmm-btn-retry {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(245, 158, 11, 0.35);
+  color: #fbbf24;
+}
+.cmm-btn-retry:hover {
   background: #d97706;
   border-color: #f59e0b;
   color: #fff;
-}
-.cmm-btn-retry:hover {
-  background: #b45309;
 }
 
 /* Toggle Switch Styling */
 .cmm-switch {
   position: relative;
   display: inline-block;
-  width: 44px;
-  height: 24px;
+  width: 40px;
+  height: 22px;
   flex-shrink: 0;
 }
 
@@ -797,20 +836,20 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: #374151;
-  transition: .2s;
-  border-radius: 24px;
+  background-color: #334155;
+  transition: .18s ease;
+  border-radius: 22px;
 }
 
 .cmm-slider:before {
   position: absolute;
   content: "";
-  height: 18px;
-  width: 18px;
+  height: 16px;
+  width: 16px;
   left: 3px;
   bottom: 3px;
   background-color: #fff;
-  transition: .2s;
+  transition: .18s ease;
   border-radius: 50%;
 }
 
@@ -819,53 +858,62 @@ input:checked + .cmm-slider {
 }
 
 input:checked + .cmm-slider:before {
-  transform: translateX(20px);
+  transform: translateX(18px);
 }
 
 /* Modal Tabs Navigation */
 .cmm-tabs-nav {
-  display: flex;
-  gap: 6px;
-  background: #181820;
-  padding: 4px;
-  border-radius: 8px;
-  border: 1px solid #2e2e3a;
-  width: fit-content;
-  margin-bottom: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: #14141c;
+  padding: 2px 3px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  height: 32px;
+  box-sizing: border-box;
+  margin-bottom: 0;
 }
 
 .cmm-tab-btn {
   background: transparent;
   border: none;
-  color: #8f92a1;
-  padding: 6px 14px;
-  font-size: 0.86rem;
+  color: #94a3b8;
+  padding: 0 12px;
+  font-size: 0.81rem;
   font-weight: 500;
-  border-radius: 6px;
+  border-radius: 5px;
   cursor: pointer;
   transition: all 0.12s ease;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   user-select: none;
+  height: 100%;
+  box-sizing: border-box;
+  white-space: nowrap;
 }
 
 .cmm-tab-btn:hover {
-  color: #e0e0e0;
+  color: #f1f5f9;
   background: rgba(255, 255, 255, 0.05);
+}
+
+.cmm-tab-btn:active {
+  transform: scale(0.97);
 }
 
 .cmm-tab-btn.active {
   background: #2563eb;
-  color: #fff;
+  color: #ffffff;
   font-weight: 600;
-  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
 }
 
 /* Staging Queue Component */
 .cmm-staging-container {
-  background: #191922;
-  border: 1px solid #2d2d3c;
+  background: #14141d;
+  border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 8px;
   max-height: 280px;
   overflow-y: auto;
@@ -877,20 +925,20 @@ input:checked + .cmm-slider:before {
 }
 
 .cmm-staging-item {
-  background: #23232f;
-  border: 1px solid #333344;
+  background: #181824;
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 6px;
   padding: 8px 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  transition: border-color 0.1s ease, background 0.1s ease;
+  transition: all 0.12s ease;
 }
 
 .cmm-staging-item:hover {
-  border-color: #4a4a60;
-  background: #272735;
+  border-color: rgba(255, 255, 255, 0.14);
+  background: #1d1d2b;
 }
 
 /* Settings Help Tooltip Icon */
@@ -901,8 +949,8 @@ input:checked + .cmm-slider:before {
   width: 15px;
   height: 15px;
   border-radius: 50%;
-  background: #333344;
-  color: #9ca3af;
+  background: rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
   font-size: 10px;
   font-weight: 700;
   cursor: help;
@@ -911,6 +959,11 @@ input:checked + .cmm-slider:before {
   transition: background 0.15s ease, color 0.15s ease;
   user-select: none;
   line-height: 1;
+}
+
+.cmm-help-tip:hover {
+  background: #2563eb;
+  color: #ffffff;
 }
 
 .cmm-help-tip:hover {

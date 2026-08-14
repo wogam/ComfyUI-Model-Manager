@@ -69,18 +69,35 @@ function getNoPreviewHTML(text = "No Preview") {
   `;
 }
 
-function showToast(message, duration = 2200) {
+function showToast(message, duration = 2800) {
+  if (!message) return;
   const existing = document.querySelector(".cmm-toast");
   if (existing) existing.remove();
+
   const toast = document.createElement("div");
   toast.className = "cmm-toast";
-  toast.innerHTML = `<span>✨</span> <span>${escapeHtml(message)}</span>`;
+
+  let icon = "✨";
+  let cleanMsg = String(message).trim();
+  if (cleanMsg.startsWith("✅")) {
+    icon = "✅";
+    cleanMsg = cleanMsg.replace(/^✅\s*/, "");
+  } else if (cleanMsg.startsWith("❌") || cleanMsg.toLowerCase().includes("failed") || cleanMsg.toLowerCase().includes("error")) {
+    icon = "⚠️";
+    cleanMsg = cleanMsg.replace(/^❌\s*/, "");
+  } else if (cleanMsg.startsWith("🗑️") || cleanMsg.startsWith("📋") || cleanMsg.startsWith("📁") || cleanMsg.startsWith("🔍") || cleanMsg.startsWith("🏷️")) {
+    icon = cleanMsg.slice(0, 2);
+    cleanMsg = cleanMsg.slice(2).trim();
+  }
+
+  toast.innerHTML = `<span style="font-size:1rem;">${icon}</span> <span>${escapeHtml(cleanMsg)}</span>`;
   document.body.appendChild(toast);
+
   setTimeout(() => {
-    toast.style.transition = "opacity 0.2s ease, transform 0.2s ease";
+    toast.style.transition = "opacity 0.25s ease, transform 0.25s ease";
     toast.style.opacity = "0";
-    toast.style.transform = "translateY(8px) scale(0.96)";
-    setTimeout(() => toast.remove(), 220);
+    toast.style.transform = "translateY(10px) scale(0.96)";
+    setTimeout(() => toast.remove(), 260);
   }, duration);
 }
 
@@ -519,7 +536,7 @@ async function openModelManagerDialog() {
       };
     }
   } catch (err) {
-    alert("Failed to load model categories: " + err.message);
+    showToast("Failed to load model categories: " + err.message);
   }
 
   const searchInput = dialog.querySelector("#cmm-search-input");
@@ -939,10 +956,10 @@ async function openModelDetailModal(model, onRefresh) {
         }
         if (onRefresh) onRefresh();
       } else {
-        alert("Failed to fetch model info: " + (res.error || "No match found"));
+        showToast("Failed to fetch model info: " + (res.error || "No match found"));
       }
     } catch (err) {
-      alert("Error fetching model info: " + err.message);
+      showToast("Error fetching model info: " + err.message);
     } finally {
       singleScanBtn.disabled = false;
       singleScanBtn.textContent = "🔍 Fetch Info";
@@ -1128,10 +1145,10 @@ async function openModelDetailModal(model, onRefresh) {
         showToast("Description saved successfully!");
         setEditMode(false);
       } else {
-        alert("Failed to save description: " + res.error);
+        showToast("Failed to save description: " + res.error);
       }
     } catch (err) {
-      alert("Error: " + err.message);
+      showToast("Error: " + err.message);
     }
   };
 
@@ -1199,10 +1216,10 @@ async function openModelDetailModal(model, onRefresh) {
         overlay.remove();
         if (onRefresh) onRefresh();
       } else {
-        alert("Failed to update preview: " + res.error);
+        showToast("Failed to update preview: " + res.error);
       }
     } catch (err) {
-      alert("Error: " + err.message);
+      showToast("Error: " + err.message);
     }
   };
 
@@ -1211,7 +1228,7 @@ async function openModelDetailModal(model, onRefresh) {
     const newSubfolder = renameSubfolderInput.value.trim();
     const newBasename = renameBasenameInput.value.trim();
     if (!newBasename) {
-      alert("Basename cannot be empty.");
+      showToast("Basename cannot be empty.");
       return;
     }
 
@@ -1231,10 +1248,10 @@ async function openModelDetailModal(model, onRefresh) {
         overlay.remove();
         if (onRefresh) onRefresh();
       } else {
-        alert("Failed to rename model: " + res.error);
+        showToast("Failed to rename model: " + res.error);
       }
     } catch (err) {
-      alert("Error: " + err.message);
+      showToast("Error: " + err.message);
     }
   };
 
@@ -1251,10 +1268,10 @@ async function openModelDetailModal(model, onRefresh) {
         overlay.remove();
         if (onRefresh) onRefresh();
       } else {
-        alert("Failed to delete model: " + res.error);
+        showToast("Failed to delete model: " + res.error);
       }
     } catch (err) {
-      alert("Error: " + err.message);
+      showToast("Error: " + err.message);
     }
   };
 }
@@ -1264,7 +1281,9 @@ async function openDownloadManagerModal() {
   const overlay = createOverlay("cmm-dialog-sub");
   const dialog = document.createElement("div");
   dialog.className = "cmm-dialog";
-  dialog.style.maxWidth = "850px";
+  dialog.style.width = "920px";
+  dialog.style.maxWidth = "95vw";
+  dialog.style.height = "86vh";
 
   dialog.innerHTML = `
     <div class="cmm-header">
@@ -1276,11 +1295,11 @@ async function openDownloadManagerModal() {
       </div>
     </div>
 
-    <div class="cmm-body" style="padding:20px; display:flex; flex-direction:column; gap:20px;">
+    <div class="cmm-body" style="padding:18px; display:flex; flex-direction:column; gap:16px;">
       <!-- Add Task Section -->
-      <div style="background:#20202a; padding:16px; border-radius:8px; border:1px solid #333342;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-          <h4 style="margin:0; color:#fff;">Add Download Tasks</h4>
+      <div class="cmm-section-card">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+          <h4 style="margin:0; color:#f8fafc; font-size:0.95rem;">Add Download Tasks</h4>
           <div class="cmm-tabs-nav" style="margin-bottom:0;">
             <button class="cmm-tab-btn active" id="cmm-dl-tab-single">🔗 Single URL</button>
             <button class="cmm-tab-btn" id="cmm-dl-tab-bulk">📋 Bulk URLs</button>
@@ -1289,27 +1308,27 @@ async function openDownloadManagerModal() {
 
         <!-- Single URL Panel -->
         <div id="cmm-dl-single-panel" style="display:flex; flex-direction:column; gap:10px;">
-          <div style="display:flex; gap:10px;">
+          <div style="display:flex; gap:8px;">
             <input type="text" class="cmm-input" id="cmm-dl-url" placeholder="Paste Civitai or HuggingFace URL..." style="flex:1;" />
             <button class="cmm-btn" id="cmm-dl-parse-btn">🔍 Parse Link</button>
           </div>
 
           <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px;">
             <div>
-              <label style="font-size:0.8rem; color:#aaa; display:block; margin-bottom:2px;">Target Category:</label>
+              <label style="font-size:0.78rem; color:#94a3b8; display:block; margin-bottom:4px; font-weight:500;">Target Category:</label>
               <select class="cmm-select" id="cmm-dl-category" style="width:100%; box-sizing:border-box;"></select>
             </div>
             <div>
-              <label style="font-size:0.8rem; color:#aaa; display:block; margin-bottom:2px;">Subfolder Path:</label>
+              <label style="font-size:0.78rem; color:#94a3b8; display:block; margin-bottom:4px; font-weight:500;">Subfolder Path:</label>
               <input type="text" class="cmm-input" id="cmm-dl-subfolder" placeholder="e.g. SDXL 1.0/Style" style="width:100%; box-sizing:border-box;" />
             </div>
             <div>
-              <label style="font-size:0.8rem; color:#aaa; display:block; margin-bottom:2px;">Filename on Disk:</label>
+              <label style="font-size:0.78rem; color:#94a3b8; display:block; margin-bottom:4px; font-weight:500;">Filename on Disk:</label>
               <input type="text" class="cmm-input" id="cmm-dl-filename" placeholder="model_name.safetensors" style="width:100%; box-sizing:border-box;" />
             </div>
           </div>
 
-          <div style="display:flex; justify-content:flex-end;">
+          <div style="display:flex; justify-content:flex-end; margin-top:2px;">
             <button class="cmm-btn cmm-btn-primary" id="cmm-dl-start-btn">🚀 Start Download Task</button>
           </div>
         </div>
@@ -1318,21 +1337,21 @@ async function openDownloadManagerModal() {
         <div id="cmm-dl-bulk-panel" style="display:none; flex-direction:column; gap:12px;">
           <div>
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-              <label style="font-size:0.8rem; color:#aaa;">Paste multiple URLs (one per line):</label>
-              <span id="cmm-dl-bulk-line-count" style="font-size:0.75rem; color:#777;">0 URLs detected</span>
+              <label style="font-size:0.78rem; color:#94a3b8; font-weight:500;">Paste multiple URLs (one per line):</label>
+              <span id="cmm-dl-bulk-line-count" class="cmm-badge" style="background:rgba(255,255,255,0.06); font-size:0.72rem;">0 URLs detected</span>
             </div>
-            <textarea class="cmm-input" id="cmm-dl-bulk-urls" placeholder="https://civitai.com/models/12345&#10;https://civitai.com/models/67890?modelVersionId=112233&#10;https://huggingface.co/author/repo/blob/main/model.safetensors" style="width:100%; min-height:90px; box-sizing:border-box; resize:vertical; font-family:monospace; font-size:0.85rem; line-height:1.4;"></textarea>
+            <textarea class="cmm-input" id="cmm-dl-bulk-urls" placeholder="https://civitai.com/models/12345&#10;https://civitai.com/models/67890?modelVersionId=112233&#10;https://huggingface.co/author/repo/blob/main/model.safetensors" style="width:100%; min-height:85px; box-sizing:border-box; resize:vertical; font-family:monospace; font-size:0.82rem; line-height:1.45;"></textarea>
           </div>
 
           <div style="display:grid; grid-template-columns: 1fr 1fr auto; gap:10px; align-items:flex-start;">
             <div>
-              <label style="font-size:0.8rem; color:#aaa; display:block; margin-bottom:2px;">Default Target Category:</label>
+              <label style="font-size:0.78rem; color:#94a3b8; display:block; margin-bottom:4px; font-weight:500;">Default Target Category:</label>
               <select class="cmm-select" id="cmm-dl-bulk-category" style="width:100%; box-sizing:border-box;">
                 <option value="AUTO" selected>✨ Auto-detect Category (Recommended)</option>
               </select>
             </div>
             <div>
-              <label style="font-size:0.8rem; color:#aaa; display:block; margin-bottom:2px;">Default Subfolder:</label>
+              <label style="font-size:0.78rem; color:#94a3b8; display:block; margin-bottom:4px; font-weight:500;">Default Subfolder:</label>
               <select class="cmm-select" id="cmm-dl-bulk-subfolder-mode" style="width:100%; box-sizing:border-box;">
                 <option value="AUTO" selected>✨ Auto-detect Base Model (e.g. SDXL, FLUX)</option>
                 <option value="ROOT">📁 Root (No subfolder)</option>
@@ -1340,22 +1359,22 @@ async function openDownloadManagerModal() {
               </select>
               <input type="text" class="cmm-input" id="cmm-dl-bulk-custom-subfolder" placeholder="e.g. MyLoRAs" style="width:100%; box-sizing:border-box; margin-top:6px; display:none;" />
             </div>
-            <div style="display:flex; gap:8px; margin-top:18px;">
+            <div style="display:flex; gap:8px; margin-top:20px;">
               <button class="cmm-btn" id="cmm-dl-bulk-clear-btn" title="Clear text">🧹 Clear</button>
               <button class="cmm-btn cmm-btn-primary" id="cmm-dl-bulk-parse-btn">🔍 Parse & Review URLs</button>
             </div>
           </div>
 
           <!-- Staged Items Section -->
-          <div id="cmm-dl-staging-section" style="display:none; margin-top:6px; border-top:1px solid #333342; padding-top:12px;">
+          <div id="cmm-dl-staging-section" style="display:none; margin-top:6px; border-top:1px solid rgba(255,255,255,0.07); padding-top:12px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-              <div style="font-size:0.9rem; font-weight:600; color:#fff; display:flex; align-items:center; gap:8px;">
+              <div style="font-size:0.88rem; font-weight:600; color:#f8fafc; display:flex; align-items:center; gap:8px;">
                 <span>📋 Staged Items</span>
                 <span id="cmm-staging-count" class="cmm-badge">0</span>
               </div>
               <div style="display:flex; gap:8px;">
-                <button class="cmm-btn cmm-btn-icon" id="cmm-staging-clear-all" title="Remove all staged items">🗑️ Clear Staged</button>
-                <button class="cmm-btn cmm-btn-primary" id="cmm-staging-start-all">🚀 Start All Downloads</button>
+                <button class="cmm-btn" id="cmm-staging-clear-all" title="Remove all staged items" style="font-size:0.78rem;">🗑️ Clear Staged</button>
+                <button class="cmm-btn cmm-btn-primary" id="cmm-staging-start-all" style="font-size:0.78rem;">🚀 Start All Downloads</button>
               </div>
             </div>
             <div class="cmm-staging-container" id="cmm-staging-list"></div>
@@ -1461,7 +1480,7 @@ async function openDownloadManagerModal() {
   const parseBtn = dialog.querySelector("#cmm-dl-parse-btn");
   parseBtn.onclick = async () => {
     const url = dialog.querySelector("#cmm-dl-url").value.trim();
-    if (!url) return alert("Please enter a URL first.");
+    if (!url) return showToast("Please enter a URL first.");
 
     const originalBtnContent = parseBtn.innerHTML;
     parseBtn.disabled = true;
@@ -1491,11 +1510,14 @@ async function openDownloadManagerModal() {
           }
         }
 
+        showToast("Link parsed successfully!");
         console.log(`[ModelManager] Found model info from ${parsedData.website || 'web'}: Filename=${targetFilename}, Subfolder=${parsedData.subFolder || '(root)'}`);
       } else {
+        showToast("⚠️ Could not parse model details from URL");
         console.warn("[ModelManager] Failed to parse URL or no downloadable file found.");
       }
     } catch (err) {
+      showToast("Parse error: " + err.message);
       console.error("[ModelManager] Parse error:", err.message);
     } finally {
       parseBtn.disabled = false;
@@ -1511,7 +1533,7 @@ async function openDownloadManagerModal() {
     const basename = dialog.querySelector("#cmm-dl-filename").value.trim();
 
     if (!url || !basename) {
-      alert("Please provide both URL and filename.");
+      showToast("Please provide both URL and filename.");
       return;
     }
 
@@ -1548,16 +1570,17 @@ async function openDownloadManagerModal() {
       });
 
       if (res.success) {
+        showToast("Download task added!");
         dialog.querySelector("#cmm-dl-url").value = "";
         dialog.querySelector("#cmm-dl-filename").value = "";
         dialog.querySelector("#cmm-dl-subfolder").value = "";
         parsedData = null;
         fetchTasks();
       } else {
-        alert("Failed to add task: " + res.error);
+        showToast("Failed to add task: " + res.error);
       }
     } catch (err) {
-      alert("Error starting download: " + err.message);
+      showToast("Error starting download: " + err.message);
     }
   };
 
@@ -1669,7 +1692,7 @@ async function openDownloadManagerModal() {
     }
 
     if (urls.length === 0) {
-      alert("Please paste at least one valid URL (starting with http:// or https://).");
+      showToast("Please paste at least one valid URL (starting with http:// or https://).");
       return;
     }
 
@@ -1790,7 +1813,7 @@ async function openDownloadManagerModal() {
   startAllBtn.onclick = async () => {
     const readyItems = stagedDownloads.filter(item => item.status === "ready");
     if (readyItems.length === 0) {
-      alert("No ready items to download. Please parse URLs first or check error items.");
+      showToast("No ready items to download. Please parse URLs first or check error items.");
       return;
     }
 
@@ -2044,7 +2067,8 @@ function openUploadModal() {
   const overlay = createOverlay("cmm-dialog-sub");
   const dialog = document.createElement("div");
   dialog.className = "cmm-dialog";
-  dialog.style.maxWidth = "600px";
+  dialog.style.width = "580px";
+  dialog.style.maxWidth = "94vw";
   dialog.style.height = "auto";
   dialog.style.maxHeight = "85vh";
 
@@ -2058,25 +2082,25 @@ function openUploadModal() {
       </div>
     </div>
 
-    <div class="cmm-body" style="padding:20px; display:flex; flex-direction:column; gap:16px;">
+    <div class="cmm-body" style="padding:18px; display:flex; flex-direction:column; gap:14px;">
       <div>
-        <label style="display:block; font-weight:600; margin-bottom:4px;">Target Category:</label>
+        <label style="display:block; font-size:0.84rem; font-weight:600; color:#e2e8f0; margin-bottom:4px;">Target Category:</label>
         <select class="cmm-select" id="cmm-up-category" style="width:100%; box-sizing:border-box;"></select>
       </div>
 
       <div>
-        <label style="display:block; font-weight:600; margin-bottom:4px;">Subfolder Path (optional):</label>
+        <label style="display:block; font-size:0.84rem; font-weight:600; color:#e2e8f0; margin-bottom:4px;">Subfolder Path (optional):</label>
         <input type="text" class="cmm-input" id="cmm-up-subfolder" placeholder="e.g. SDXL/Base" style="width:100%; box-sizing:border-box;" />
       </div>
 
       <div class="cmm-dropzone" id="cmm-up-dropzone">
-        <div style="font-size:2.5rem; margin-bottom:8px;">📁</div>
-        <div style="font-weight:600; color:#fff;">Drag & drop model file here</div>
-        <div style="font-size:0.8rem; color:#888; margin-top:4px;">or click to select file</div>
+        <div style="font-size:2.4rem; margin-bottom:6px;">📁</div>
+        <div style="font-weight:600; color:#f8fafc; font-size:0.92rem;">Drag & drop model file here</div>
+        <div style="font-size:0.78rem; color:#94a3b8; margin-top:3px;">or click to browse filesystem</div>
         <input type="file" id="cmm-up-file-input" style="display:none;" />
       </div>
 
-      <div id="cmm-up-file-name" style="font-size:0.9rem; font-weight:600; color:#93c5fd; text-align:center;"></div>
+      <div id="cmm-up-file-name" style="font-size:0.84rem; font-weight:600; color:#93c5fd; text-align:center; font-family:monospace;"></div>
 
       <div style="display:flex; justify-content:flex-end;">
         <button class="cmm-btn cmm-btn-primary" id="cmm-up-submit-btn" disabled>Upload File</button>
@@ -2123,12 +2147,12 @@ function openUploadModal() {
   };
 
   dropzone.ondragleave = () => {
-    dropzone.style.borderColor = "#444";
+    dropzone.style.borderColor = "rgba(255, 255, 255, 0.15)";
   };
 
   dropzone.ondrop = (e) => {
     e.preventDefault();
-    dropzone.style.borderColor = "#444";
+    dropzone.style.borderColor = "rgba(255, 255, 255, 0.15)";
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       selectedFile = e.dataTransfer.files[0];
       fileNameDisplay.textContent = `Selected: ${selectedFile.name} (${formatBytes(selectedFile.size)})`;
@@ -2155,15 +2179,15 @@ function openUploadModal() {
       });
 
       if (res.success) {
-        alert("Upload completed successfully!");
+        showToast("Upload completed successfully!");
         overlay.remove();
       } else {
-        alert("Upload failed: " + res.error);
+        showToast("Upload failed: " + res.error);
         submitBtn.disabled = false;
         submitBtn.textContent = "Upload File";
       }
     } catch (err) {
-      alert("Upload error: " + err.message);
+      showToast("Upload error: " + err.message);
       submitBtn.disabled = false;
       submitBtn.textContent = "Upload File";
     }
@@ -2175,7 +2199,8 @@ function openBatchScanModal() {
   const overlay = createOverlay("cmm-dialog-sub");
   const dialog = document.createElement("div");
   dialog.className = "cmm-dialog";
-  dialog.style.maxWidth = "550px";
+  dialog.style.width = "540px";
+  dialog.style.maxWidth = "94vw";
   dialog.style.height = "auto";
   dialog.style.maxHeight = "85vh";
 
@@ -2189,18 +2214,18 @@ function openBatchScanModal() {
       </div>
     </div>
 
-    <div class="cmm-body" style="padding:20px; display:flex; flex-direction:column; gap:16px;">
-      <p style="color:#aaa; font-size:0.9rem; margin:0;">Batch fetching calculates model SHA256 hashes and searches Civitai to automatically download previews and metadata.</p>
+    <div class="cmm-body" style="padding:18px; display:flex; flex-direction:column; gap:14px;">
+      <p style="color:#94a3b8; font-size:0.86rem; margin:0; line-height:1.5;">Batch fetching calculates model SHA256 hashes and queries Civitai to automatically download preview images and model metadata.</p>
       
       <div>
-        <label style="display:block; font-weight:600; margin-bottom:4px;">Fetch Mode:</label>
+        <label style="display:block; font-size:0.84rem; font-weight:600; color:#e2e8f0; margin-bottom:4px;">Fetch Mode:</label>
         <select class="cmm-select" id="cmm-scan-mode" style="width:100%; box-sizing:border-box;">
           <option value="diff">Diff Fetch (Only models missing preview/info)</option>
           <option value="full">Full Refetch (All models)</option>
         </select>
       </div>
 
-      <div style="display:flex; justify-content:flex-end;">
+      <div style="display:flex; justify-content:flex-end; margin-top:4px;">
         <button class="cmm-btn cmm-btn-primary" id="cmm-start-scan-btn">🚀 Start Fetching</button>
       </div>
     </div>
@@ -2222,13 +2247,13 @@ function openBatchScanModal() {
         body: JSON.stringify({ mode }),
       });
       if (res.success) {
-        alert("Batch metadata fetching started in background!");
+        showToast("Batch metadata fetching started in background!");
         overlay.remove();
       } else {
-        alert("Failed to start fetch task: " + res.error);
+        showToast("Failed to start fetch task: " + res.error);
       }
     } catch (err) {
-      alert("Error: " + err.message);
+      showToast("Error: " + err.message);
     }
   };
 }
@@ -2238,7 +2263,8 @@ async function openSettingsModal(onSaveCallback) {
   const overlay = createOverlay("cmm-dialog-sub");
   const dialog = document.createElement("div");
   dialog.className = "cmm-dialog";
-  dialog.style.maxWidth = "560px";
+  dialog.style.width = "620px";
+  dialog.style.maxWidth = "94vw";
   dialog.style.height = "auto";
   dialog.style.maxHeight = "88vh";
 
@@ -2252,9 +2278,9 @@ async function openSettingsModal(onSaveCallback) {
       </div>
     </div>
 
-    <div class="cmm-body" style="padding:20px; display:flex; flex-direction:column; gap:16px; overflow-y:auto;">
+    <div class="cmm-body" style="padding:18px; display:flex; flex-direction:column; gap:14px; overflow-y:auto;">
       <div>
-        <label style="display:block; font-size:0.88rem; font-weight:600; margin-bottom:4px;" title="Civitai API Key for authentication">
+        <label style="display:block; font-size:0.84rem; font-weight:600; color:#e2e8f0; margin-bottom:4px;" title="Civitai API Key for authentication">
           Civitai API Key:
           <span class="cmm-help-tip" title="API key from civitai.com account settings. Required for downloading early access or NSFW models, fetching private metadata, and avoiding API rate limits.">?</span>
         </label>
@@ -2265,7 +2291,7 @@ async function openSettingsModal(onSaveCallback) {
       </div>
 
       <div>
-        <label style="display:block; font-size:0.88rem; font-weight:600; margin-bottom:4px;" title="HuggingFace User Access Token">
+        <label style="display:block; font-size:0.84rem; font-weight:600; color:#e2e8f0; margin-bottom:4px;" title="HuggingFace User Access Token">
           HuggingFace API Token:
           <span class="cmm-help-tip" title="User Access Token from huggingface.co/settings/tokens. Required for downloading gated repositories (e.g., SDXL, Flux) or private models.">?</span>
         </label>
@@ -2276,17 +2302,17 @@ async function openSettingsModal(onSaveCallback) {
       </div>
 
       <!-- SOCKS5 Proxy Enclosure with Civitai and HuggingFace Toggles -->
-      <div style="background:#1a1a24; border:1px solid #2d2d3a; border-radius:8px; padding:14px;">
-        <div style="font-weight:600; font-size:0.92rem; color:#fff; margin-bottom:10px; display:flex; align-items:center;" title="Configure SOCKS5 proxy to bypass regional restrictions or network firewalls">
+      <div class="cmm-section-card">
+        <div style="font-weight:600; font-size:0.88rem; color:#f8fafc; margin-bottom:4px; display:flex; align-items:center;" title="Configure SOCKS5 proxy to bypass regional restrictions or network firewalls">
           SOCKS5 Proxy Configuration
           <span class="cmm-help-tip" title="Route Civitai or HuggingFace network traffic through a local or remote SOCKS5 proxy server (e.g. Clash, V2Ray, Shadowsocks, SSH tunnel).">?</span>
         </div>
         
-        <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:12px;">
+        <div style="display:flex; flex-direction:column; gap:8px;">
           <div style="display:flex; justify-content:space-between; align-items:center;" title="Route Civitai API queries and metadata lookups through your SOCKS5 proxy">
             <div>
-              <div style="font-size:0.86rem; font-weight:600; color:#e0e0e0;">Use Proxy for Civitai</div>
-              <div style="font-size:0.75rem; color:#888;">Route Civitai API queries & info lookups</div>
+              <div style="font-size:0.84rem; font-weight:600; color:#e2e8f0;">Use Proxy for Civitai</div>
+              <div style="font-size:0.75rem; color:#94a3b8;">Route Civitai API queries & info lookups</div>
             </div>
             <label class="cmm-switch" title="Toggle SOCKS5 proxy routing for Civitai">
               <input type="checkbox" id="cmm-set-proxy-civitai" title="Toggle SOCKS5 proxy routing for Civitai" />
@@ -2296,8 +2322,8 @@ async function openSettingsModal(onSaveCallback) {
 
           <div style="display:flex; justify-content:space-between; align-items:center;" title="Route HuggingFace API queries and model lookups through your SOCKS5 proxy">
             <div>
-              <div style="font-size:0.86rem; font-weight:600; color:#e0e0e0;">Use Proxy for HuggingFace</div>
-              <div style="font-size:0.75rem; color:#888;">Route HuggingFace API queries & info lookups</div>
+              <div style="font-size:0.84rem; font-weight:600; color:#e2e8f0;">Use Proxy for HuggingFace</div>
+              <div style="font-size:0.75rem; color:#94a3b8;">Route HuggingFace API queries & info lookups</div>
             </div>
             <label class="cmm-switch" title="Toggle SOCKS5 proxy routing for HuggingFace">
               <input type="checkbox" id="cmm-set-proxy-hf" title="Toggle SOCKS5 proxy routing for HuggingFace" />
@@ -2306,9 +2332,9 @@ async function openSettingsModal(onSaveCallback) {
           </div>
         </div>
 
-        <div id="cmm-proxy-fields-container" style="display:none; flex-direction:column; gap:10px; border-top:1px solid #2d2d3a; padding-top:12px;">
+        <div id="cmm-proxy-fields-container" style="display:none; flex-direction:column; gap:10px; border-top:1px solid rgba(255,255,255,0.07); padding-top:10px; margin-top:2px;">
           <div>
-            <label style="display:block; font-size:0.8rem; color:#aaa; margin-bottom:4px;" title="Determine whether downloads or only API queries pass through the proxy">
+            <label style="display:block; font-size:0.78rem; color:#94a3b8; margin-bottom:4px; font-weight:500;" title="Determine whether downloads or only API queries pass through the proxy">
               Proxy Routing Mode:
               <span class="cmm-help-tip" title="Choose whether to route only API metadata queries (recommended to save bandwidth and maximize download speed) or all traffic including large model files.">?</span>
             </label>
@@ -2320,33 +2346,33 @@ async function openSettingsModal(onSaveCallback) {
 
           <div style="display:grid; grid-template-columns: 2fr 1fr; gap:10px;">
             <div>
-              <label style="display:block; font-size:0.8rem; color:#aaa; margin-bottom:2px;" title="SOCKS5 Server hostname or IP address">Host / Server:</label>
+              <label style="display:block; font-size:0.78rem; color:#94a3b8; margin-bottom:4px; font-weight:500;" title="SOCKS5 Server hostname or IP address">Host / Server:</label>
               <input type="text" class="cmm-input" id="cmm-set-proxy-host" placeholder="e.g. 127.0.0.1 or proxy.example.com" style="width:100%; box-sizing:border-box;" title="SOCKS5 proxy IP address or hostname (e.g. 127.0.0.1 for local clients)" />
             </div>
             <div>
-              <label style="display:block; font-size:0.8rem; color:#aaa; margin-bottom:2px;" title="SOCKS5 Server Port">Port:</label>
+              <label style="display:block; font-size:0.78rem; color:#94a3b8; margin-bottom:4px; font-weight:500;" title="SOCKS5 Server Port">Port:</label>
               <input type="text" class="cmm-input" id="cmm-set-proxy-port" placeholder="1080" style="width:100%; box-sizing:border-box;" title="SOCKS5 port number (default: 1080, Clash: 7890, V2Ray: 10808, etc.)" />
             </div>
           </div>
 
           <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
             <div>
-              <label style="display:block; font-size:0.8rem; color:#aaa; margin-bottom:2px;" title="Optional proxy username">Username (optional):</label>
+              <label style="display:block; font-size:0.78rem; color:#94a3b8; margin-bottom:4px; font-weight:500;" title="Optional proxy username">Username (optional):</label>
               <input type="text" class="cmm-input" id="cmm-set-proxy-user" placeholder="Username" style="width:100%; box-sizing:border-box;" title="Optional username for SOCKS5 proxy authentication" />
             </div>
             <div>
-              <label style="display:block; font-size:0.8rem; color:#aaa; margin-bottom:2px;" title="Optional proxy password">Password (optional):</label>
+              <label style="display:block; font-size:0.78rem; color:#94a3b8; margin-bottom:4px; font-weight:500;" title="Optional proxy password">Password (optional):</label>
               <input type="password" class="cmm-input" id="cmm-set-proxy-pass" placeholder="Password" style="width:100%; box-sizing:border-box;" title="Optional password for SOCKS5 proxy authentication" />
             </div>
           </div>
 
-          <div style="display:flex; justify-content:space-between; align-items:center; background:#14141d; border:1px solid #282836; border-radius:6px; padding:10px 12px; margin-top:2px;" title="Keep SOCKS5 TCP connection open across requests to speed up metadata lookups">
+          <div style="display:flex; justify-content:space-between; align-items:center; background:#14141d; border:1px solid rgba(255,255,255,0.06); border-radius:6px; padding:10px 12px; margin-top:2px;" title="Keep SOCKS5 TCP connection open across requests to speed up metadata lookups">
             <div>
-              <div style="font-size:0.86rem; font-weight:600; color:#e0e0e0; display:flex; align-items:center;">
+              <div style="font-size:0.84rem; font-weight:600; color:#e2e8f0; display:flex; align-items:center;">
                 Reuse Proxy Connection (Keep-Alive)
                 <span class="cmm-help-tip" title="Maintains persistent HTTP/SOCKS5 connection pools to drastically speed up batch metadata parsing and avoid repeated TLS/proxy handshakes.">?</span>
               </div>
-              <div style="font-size:0.75rem; color:#888;">Reuses persistent connection pool for metadata parsing & bulk URL scans to prevent connection overhead</div>
+              <div style="font-size:0.74rem; color:#94a3b8;">Reuses persistent connection pool for metadata parsing & bulk URL scans to prevent connection overhead</div>
             </div>
             <label class="cmm-switch" title="Toggle persistent proxy connection pool">
               <input type="checkbox" id="cmm-set-proxy-reuse" title="Toggle persistent proxy connection pool" />
@@ -2354,21 +2380,21 @@ async function openSettingsModal(onSaveCallback) {
             </label>
           </div>
 
-          <div style="display:flex; justify-content:flex-end; margin-top:4px;">
-            <button class="cmm-btn" id="cmm-test-proxy-btn" style="font-size:0.82rem;" title="Test connection to the specified SOCKS5 proxy server">🧪 Test Proxy Connection</button>
+          <div style="display:flex; justify-content:flex-end; margin-top:2px;">
+            <button class="cmm-btn" id="cmm-test-proxy-btn" style="font-size:0.8rem;" title="Test connection to the specified SOCKS5 proxy server">🧪 Test Proxy Connection</button>
           </div>
         </div>
       </div>
 
       <!-- Convert Video Previews to WebP Toggle Switch -->
-      <div style="background:#1a1a24; border:1px solid #2d2d3a; border-radius:8px; padding:14px; display:flex; flex-direction:column; gap:10px;" title="Convert downloaded/detected video previews into lightweight animated WebP images">
+      <div class="cmm-section-card" title="Convert downloaded/detected video previews into lightweight animated WebP images">
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <div>
-            <div style="font-weight:600; font-size:0.88rem; color:#fff; display:flex; align-items:center;">
+            <div style="font-weight:600; font-size:0.86rem; color:#f8fafc; display:flex; align-items:center;">
               Convert Video Previews to Animated WebP
               <span class="cmm-help-tip" title="Uses FFmpeg to convert MP4/WEBM model preview videos into animated WebP files (quality 85%, compression 2), significantly reducing disk space and speeding up gallery loading. Requires FFmpeg on PATH.">?</span>
             </div>
-            <div style="font-size:0.75rem; color:#888;">Uses FFmpeg to convert video previews to WebP (quality 85%, compression 2). Requires FFmpeg installed.</div>
+            <div style="font-size:0.75rem; color:#94a3b8;">Uses FFmpeg to convert video previews to WebP (quality 85%, compression 2). Requires FFmpeg installed.</div>
           </div>
           <label class="cmm-switch" title="Toggle video preview conversion to animated WebP">
             <input type="checkbox" id="cmm-set-convert-video-webp" title="Toggle video preview conversion to animated WebP" />
@@ -2376,12 +2402,12 @@ async function openSettingsModal(onSaveCallback) {
           </label>
         </div>
         <div style="display:flex; justify-content:flex-end;">
-          <button class="cmm-btn" id="cmm-check-ffmpeg-btn" style="font-size:0.82rem;" title="Check if FFmpeg binary is installed and detected on system PATH">🔍 Check FFmpeg Installation</button>
+          <button class="cmm-btn" id="cmm-check-ffmpeg-btn" style="font-size:0.8rem;" title="Check if FFmpeg binary is installed and detected on system PATH">🔍 Check FFmpeg Installation</button>
         </div>
       </div>
 
       <div>
-        <label style="display:block; font-size:0.88rem; font-weight:600; margin-bottom:4px;" title="Number of simultaneous background downloads">
+        <label style="display:block; font-size:0.84rem; font-weight:600; color:#e2e8f0; margin-bottom:4px;" title="Number of simultaneous background downloads">
           Max Concurrent Downloads:
           <span class="cmm-help-tip" title="The maximum number of model download tasks that can run in parallel. Additional tasks will stay queued in the background and start automatically when slots become available.">?</span>
         </label>
@@ -2389,13 +2415,13 @@ async function openSettingsModal(onSaveCallback) {
       </div>
 
       <!-- Include Hidden Files Toggle Switch -->
-      <div style="display:flex; justify-content:space-between; align-items:center; background:#1a1a24; border:1px solid #2d2d3a; border-radius:8px; padding:12px;" title="Scan dotted folders and hidden files when discovering models">
+      <div style="display:flex; justify-content:space-between; align-items:center; background:#181824; border:1px solid rgba(255,255,255,0.07); border-radius:8px; padding:12px 14px;" title="Scan dotted folders and hidden files when discovering models">
         <div>
-          <div style="font-weight:600; font-size:0.88rem; color:#fff; display:flex; align-items:center;">
+          <div style="font-weight:600; font-size:0.86rem; color:#f8fafc; display:flex; align-items:center;">
             Include Hidden Files in Model Scanning
             <span class="cmm-help-tip" title="When enabled, model scanner will include hidden directories and files prefixed with a dot (e.g. .hidden, .models). Keep disabled to ignore system/cache directories.">?</span>
           </div>
-          <div style="font-size:0.78rem; color:#888;">Scan hidden folders and dotted files</div>
+          <div style="font-size:0.75rem; color:#94a3b8;">Scan hidden folders and dotted files</div>
         </div>
         <label class="cmm-switch" title="Toggle scanning of hidden and dotted files">
           <input type="checkbox" id="cmm-set-include-hidden" title="Toggle scanning of hidden and dotted files" />
@@ -2403,7 +2429,7 @@ async function openSettingsModal(onSaveCallback) {
         </label>
       </div>
 
-      <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:8px;">
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:6px;">
         <button class="cmm-btn" id="cmm-settings-cancel-btn" title="Discard unsaved changes and close settings">Cancel</button>
         <button class="cmm-btn cmm-btn-primary" id="cmm-settings-save-btn" title="Save all settings and apply changes">💾 Save Settings</button>
       </div>
@@ -2458,12 +2484,12 @@ async function openSettingsModal(onSaveCallback) {
     try {
       const res = await apiFetch("/model-manager/settings/check-ffmpeg", { method: "POST" });
       if (res.success && res.installed) {
-        alert("✅ " + res.message);
+        showToast(res.message);
       } else {
-        alert("❌ " + (res.error || "FFmpeg is not installed on system PATH."));
+        showToast("❌ " + (res.error || "FFmpeg is not installed on system PATH."));
       }
     } catch (err) {
-      alert("Error checking FFmpeg: " + err.message);
+      showToast("Error checking FFmpeg: " + err.message);
     } finally {
       btn.disabled = false;
       btn.textContent = "🔍 Check FFmpeg Installation";
@@ -2478,7 +2504,7 @@ async function openSettingsModal(onSaveCallback) {
     const password = proxyPassInput.value.trim();
 
     if (!host) {
-      alert("Please enter a proxy Host / Server first.");
+      showToast("Please enter a proxy Host / Server first.");
       return;
     }
 
@@ -2494,12 +2520,12 @@ async function openSettingsModal(onSaveCallback) {
       });
 
       if (res.success) {
-        alert("✅ " + (res.message || "Proxy connection successful!"));
+        showToast(res.message || "Proxy connection successful!");
       } else {
-        alert("❌ " + (res.error || "Proxy connection failed."));
+        showToast("❌ " + (res.error || "Proxy connection failed."));
       }
     } catch (err) {
-      alert("Error testing proxy: " + err.message);
+      showToast("Error testing proxy: " + err.message);
     } finally {
       testBtn.disabled = false;
       testBtn.textContent = "🧪 Test Proxy Connection";
@@ -2571,14 +2597,14 @@ async function openSettingsModal(onSaveCallback) {
       });
 
       if (res.success) {
-        alert("Settings saved successfully!");
+        showToast("Settings saved successfully!");
         closeModal();
         if (onSaveCallback) onSaveCallback();
       } else {
-        alert("Failed to save settings: " + res.error);
+        showToast("Failed to save settings: " + res.error);
       }
     } catch (err) {
-      alert("Error: " + err.message);
+      showToast("Error: " + err.message);
     }
   };
 }
