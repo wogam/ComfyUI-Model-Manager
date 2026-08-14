@@ -38,6 +38,16 @@ function formatDate(timestamp) {
   return d.toLocaleDateString() + " " + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+function escapeHtml(str) {
+  if (!str) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 function getNoPreviewHTML(text = "No Preview") {
   return `
     <div class="cmm-no-preview">
@@ -994,8 +1004,16 @@ async function openDownloadManagerModal() {
     <div class="cmm-body" style="padding:20px; display:flex; flex-direction:column; gap:20px;">
       <!-- Add Task Section -->
       <div style="background:#20202a; padding:16px; border-radius:8px; border:1px solid #333342;">
-        <h4 style="margin:0 0 12px 0; color:#fff;">Add New Download Task</h4>
-        <div style="display:flex; flex-direction:column; gap:10px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <h4 style="margin:0; color:#fff;">Add Download Tasks</h4>
+          <div class="cmm-tabs-nav" style="margin-bottom:0;">
+            <button class="cmm-tab-btn active" id="cmm-dl-tab-single">🔗 Single URL</button>
+            <button class="cmm-tab-btn" id="cmm-dl-tab-bulk">📋 Bulk URLs</button>
+          </div>
+        </div>
+
+        <!-- Single URL Panel -->
+        <div id="cmm-dl-single-panel" style="display:flex; flex-direction:column; gap:10px;">
           <div style="display:flex; gap:10px;">
             <input type="text" class="cmm-input" id="cmm-dl-url" placeholder="Paste Civitai or HuggingFace URL..." style="flex:1;" />
             <button class="cmm-btn" id="cmm-dl-parse-btn">🔍 Parse Link</button>
@@ -1018,6 +1036,54 @@ async function openDownloadManagerModal() {
 
           <div style="display:flex; justify-content:flex-end;">
             <button class="cmm-btn cmm-btn-primary" id="cmm-dl-start-btn">🚀 Start Download Task</button>
+          </div>
+        </div>
+
+        <!-- Bulk URLs Panel -->
+        <div id="cmm-dl-bulk-panel" style="display:none; flex-direction:column; gap:12px;">
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+              <label style="font-size:0.8rem; color:#aaa;">Paste multiple URLs (one per line):</label>
+              <span id="cmm-dl-bulk-line-count" style="font-size:0.75rem; color:#777;">0 URLs detected</span>
+            </div>
+            <textarea class="cmm-input" id="cmm-dl-bulk-urls" placeholder="https://civitai.com/models/12345&#10;https://civitai.com/models/67890?modelVersionId=112233&#10;https://huggingface.co/author/repo/blob/main/model.safetensors" style="width:100%; min-height:90px; box-sizing:border-box; resize:vertical; font-family:monospace; font-size:0.85rem; line-height:1.4;"></textarea>
+          </div>
+
+          <div style="display:grid; grid-template-columns: 1fr 1fr auto; gap:10px; align-items:flex-start;">
+            <div>
+              <label style="font-size:0.8rem; color:#aaa; display:block; margin-bottom:2px;">Default Target Category:</label>
+              <select class="cmm-select" id="cmm-dl-bulk-category" style="width:100%; box-sizing:border-box;">
+                <option value="AUTO" selected>✨ Auto-detect Category (Recommended)</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:0.8rem; color:#aaa; display:block; margin-bottom:2px;">Default Subfolder:</label>
+              <select class="cmm-select" id="cmm-dl-bulk-subfolder-mode" style="width:100%; box-sizing:border-box;">
+                <option value="AUTO" selected>✨ Auto-detect Base Model (e.g. SDXL, FLUX)</option>
+                <option value="ROOT">📁 Root (No subfolder)</option>
+                <option value="CUSTOM">✏️ Custom Subfolder...</option>
+              </select>
+              <input type="text" class="cmm-input" id="cmm-dl-bulk-custom-subfolder" placeholder="e.g. MyLoRAs" style="width:100%; box-sizing:border-box; margin-top:6px; display:none;" />
+            </div>
+            <div style="display:flex; gap:8px; margin-top:18px;">
+              <button class="cmm-btn" id="cmm-dl-bulk-clear-btn" title="Clear text">🧹 Clear</button>
+              <button class="cmm-btn cmm-btn-primary" id="cmm-dl-bulk-parse-btn">🔍 Parse & Review URLs</button>
+            </div>
+          </div>
+
+          <!-- Staged Items Section -->
+          <div id="cmm-dl-staging-section" style="display:none; margin-top:6px; border-top:1px solid #333342; padding-top:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+              <div style="font-size:0.9rem; font-weight:600; color:#fff; display:flex; align-items:center; gap:8px;">
+                <span>📋 Staged Items</span>
+                <span id="cmm-staging-count" class="cmm-badge">0</span>
+              </div>
+              <div style="display:flex; gap:8px;">
+                <button class="cmm-btn cmm-btn-icon" id="cmm-staging-clear-all" title="Remove all staged items">🗑️ Clear Staged</button>
+                <button class="cmm-btn cmm-btn-primary" id="cmm-staging-start-all">🚀 Start All Downloads</button>
+              </div>
+            </div>
+            <div class="cmm-staging-container" id="cmm-staging-list"></div>
           </div>
         </div>
       </div>
@@ -1058,17 +1124,65 @@ async function openDownloadManagerModal() {
 
   // Populate category options
   const categorySelect = dialog.querySelector("#cmm-dl-category");
+  const bulkCategorySelect = dialog.querySelector("#cmm-dl-bulk-category");
+
   Object.keys(state.foldersList).sort().forEach(folder => {
     const opt = document.createElement("option");
     opt.value = folder;
     opt.textContent = folder;
     if (folder === state.currentFolder) opt.selected = true;
     categorySelect.appendChild(opt);
+
+    const bulkOpt = document.createElement("option");
+    bulkOpt.value = folder;
+    bulkOpt.textContent = folder;
+    bulkCategorySelect.appendChild(bulkOpt);
   });
 
+  // Tab switching logic
+  const singleTab = dialog.querySelector("#cmm-dl-tab-single");
+  const bulkTab = dialog.querySelector("#cmm-dl-tab-bulk");
+  const singlePanel = dialog.querySelector("#cmm-dl-single-panel");
+  const bulkPanel = dialog.querySelector("#cmm-dl-bulk-panel");
+
+  singleTab.onclick = () => {
+    singleTab.classList.add("active");
+    bulkTab.classList.remove("active");
+    singlePanel.style.display = "flex";
+    bulkPanel.style.display = "none";
+  };
+
+  bulkTab.onclick = () => {
+    bulkTab.classList.add("active");
+    singleTab.classList.remove("active");
+    singlePanel.style.display = "none";
+    bulkPanel.style.display = "flex";
+  };
+
+  // Bulk subfolder mode change
+  const bulkSubfolderMode = dialog.querySelector("#cmm-dl-bulk-subfolder-mode");
+  const bulkCustomSubfolder = dialog.querySelector("#cmm-dl-bulk-custom-subfolder");
+  bulkSubfolderMode.onchange = () => {
+    if (bulkSubfolderMode.value === "CUSTOM") {
+      bulkCustomSubfolder.style.display = "block";
+      bulkCustomSubfolder.focus();
+    } else {
+      bulkCustomSubfolder.style.display = "none";
+    }
+  };
+
+  // Bulk URLs textarea counter
+  const bulkUrlsInput = dialog.querySelector("#cmm-dl-bulk-urls");
+  const lineCountBadge = dialog.querySelector("#cmm-dl-bulk-line-count");
+  const updateUrlCount = () => {
+    const lines = bulkUrlsInput.value.split(/[\r\n]+/).map(s => s.trim()).filter(s => s && !s.startsWith("#") && /^https?:\/\//i.test(s));
+    lineCountBadge.textContent = `${lines.length} URL${lines.length === 1 ? '' : 's'} detected`;
+  };
+  bulkUrlsInput.oninput = updateUrlCount;
+
+  // --- SINGLE DOWNLOAD LOGIC ---
   let parsedData = null;
 
-  // Parse URL & Auto-fill Category, Subfolder, Filename (formatted like import.py: {Model Name} - {Version Name}.safetensors)
   const parseBtn = dialog.querySelector("#cmm-dl-parse-btn");
   parseBtn.onclick = async () => {
     const url = dialog.querySelector("#cmm-dl-url").value.trim();
@@ -1114,7 +1228,7 @@ async function openDownloadManagerModal() {
     }
   };
 
-  // Start Download Task
+  // Start Single Download Task
   dialog.querySelector("#cmm-dl-start-btn").onclick = async () => {
     const url = dialog.querySelector("#cmm-dl-url").value.trim();
     const type = categorySelect.value;
@@ -1171,6 +1285,292 @@ async function openDownloadManagerModal() {
       alert("Error starting download: " + err.message);
     }
   };
+
+  // --- BULK DOWNLOAD STAGING & ACTIONS ---
+  let stagedDownloads = [];
+  const stagingSection = dialog.querySelector("#cmm-dl-staging-section");
+  const stagingList = dialog.querySelector("#cmm-staging-list");
+  const stagingCountBadge = dialog.querySelector("#cmm-staging-count");
+  const startAllBtn = dialog.querySelector("#cmm-staging-start-all");
+  const clearAllStagedBtn = dialog.querySelector("#cmm-staging-clear-all");
+  const bulkParseBtn = dialog.querySelector("#cmm-dl-bulk-parse-btn");
+  const bulkClearBtn = dialog.querySelector("#cmm-dl-bulk-clear-btn");
+
+  bulkClearBtn.onclick = () => {
+    bulkUrlsInput.value = "";
+    updateUrlCount();
+  };
+
+  clearAllStagedBtn.onclick = () => {
+    stagedDownloads = [];
+    renderStagedDownloads();
+  };
+
+  const renderStagedDownloads = () => {
+    if (stagedDownloads.length === 0) {
+      stagingSection.style.display = "none";
+      stagingList.innerHTML = "";
+      stagingCountBadge.textContent = "0";
+      return;
+    }
+
+    stagingSection.style.display = "block";
+    stagingCountBadge.textContent = stagedDownloads.length.toString();
+
+    stagingList.innerHTML = "";
+    stagedDownloads.forEach((item, index) => {
+      const row = document.createElement("div");
+      row.className = "cmm-staging-item";
+
+      let statusBadgeHtml = "";
+      if (item.status === "parsing") {
+        statusBadgeHtml = `<span class="cmm-badge cmm-badge-downloading"><span class="cmm-spin-icon">⏳</span> Parsing</span>`;
+      } else if (item.status === "ready") {
+        statusBadgeHtml = `<span class="cmm-badge cmm-badge-completed">✅ Ready</span>`;
+      } else if (item.status === "queued") {
+        statusBadgeHtml = `<span class="cmm-badge cmm-badge-waiting">🚀 Queued</span>`;
+      } else if (item.status === "error") {
+        statusBadgeHtml = `<span class="cmm-badge cmm-badge-error" title="${escapeHtml(item.errorMsg || 'Failed')}">❌ Error</span>`;
+      }
+
+      const previewHtml = item.preview ? 
+        `<img src="${item.preview}" style="width:36px; height:36px; object-fit:cover; border-radius:4px; flex-shrink:0; background:#111;" onerror="this.style.display='none'" />` : 
+        `<div style="width:36px; height:36px; border-radius:4px; background:#15151c; display:flex; align-items:center; justify-content:center; font-size:1.1rem; flex-shrink:0; color:#555;">📦</div>`;
+
+      row.innerHTML = `
+        <div style="display:flex; align-items:center; gap:10px; flex:1; min-width:0;">
+          ${previewHtml}
+          <div style="display:flex; flex-direction:column; min-width:0; flex:1;">
+            <div style="font-size:0.86rem; font-weight:600; color:#eee; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(item.filename || item.url)}">
+              ${escapeHtml(item.filename || item.url)}
+            </div>
+            <div style="font-size:0.75rem; color:#888; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+              ${item.sizeBytes > 0 ? formatBytes(item.sizeBytes) + ' • ' : ''}${escapeHtml(item.url)}
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+          <select class="cmm-select cmm-stage-cat" data-index="${index}" style="font-size:0.8rem; padding:4px 8px; width:130px;" ${item.status === "queued" ? "disabled" : ""}>
+            ${Object.keys(state.foldersList).sort().map(f => `<option value="${f}" ${f === item.category ? "selected" : ""}>${f}</option>`).join("")}
+          </select>
+          <input type="text" class="cmm-input cmm-stage-sub" data-index="${index}" placeholder="Subfolder" value="${escapeHtml(item.subfolder || '')}" style="font-size:0.8rem; padding:4px 8px; width:120px;" ${item.status === "queued" ? "disabled" : ""} />
+          ${statusBadgeHtml}
+          <button class="cmm-btn cmm-btn-icon cmm-stage-remove" data-index="${index}" title="Remove item" style="padding:4px 7px;">✕</button>
+        </div>
+      `;
+
+      // Event listeners for row inputs
+      const catSelect = row.querySelector(".cmm-stage-cat");
+      catSelect.onchange = (e) => {
+        item.category = e.target.value;
+      };
+
+      const subInput = row.querySelector(".cmm-stage-sub");
+      subInput.oninput = (e) => {
+        item.subfolder = e.target.value.trim();
+      };
+
+      const removeBtn = row.querySelector(".cmm-stage-remove");
+      removeBtn.onclick = () => {
+        stagedDownloads.splice(index, 1);
+        renderStagedDownloads();
+      };
+
+      stagingList.appendChild(row);
+    });
+  };
+
+  // Bulk Parse handler
+  bulkParseBtn.onclick = async () => {
+    const rawLines = bulkUrlsInput.value.split(/[\r\n,]+/);
+    const urls = [];
+    for (let line of rawLines) {
+      line = line.trim().replace(/^<|>$/g, "").replace(/^["']|["']$/g, "");
+      if (!line || line.startsWith("#")) continue;
+      if (/^https?:\/\//i.test(line)) {
+        if (!urls.includes(line)) urls.push(line);
+      }
+    }
+
+    if (urls.length === 0) {
+      alert("Please paste at least one valid URL (starting with http:// or https://).");
+      return;
+    }
+
+    const defaultCategory = bulkCategorySelect.value;
+    const subfolderMode = bulkSubfolderMode.value;
+    const customSubfolderVal = bulkCustomSubfolder.value.trim();
+
+    const originalBtnHtml = bulkParseBtn.innerHTML;
+    bulkParseBtn.disabled = true;
+    bulkParseBtn.innerHTML = `<span class="cmm-spin-icon">⏳</span> Parsing...`;
+
+    try {
+      // Append new items
+      const startIndex = stagedDownloads.length;
+      const newItems = urls.map(url => ({
+        id: "stage_" + Math.random().toString(36).substr(2, 9),
+        url: url,
+        status: "parsing",
+        errorMsg: "",
+        parsedData: null,
+        category: defaultCategory === "AUTO" ? (state.currentFolder || "checkpoints") : defaultCategory,
+        subfolder: subfolderMode === "CUSTOM" ? customSubfolderVal : "",
+        filename: "",
+        sizeBytes: 0,
+        preview: "",
+        platform: "url",
+      }));
+
+      stagedDownloads = stagedDownloads.concat(newItems);
+      renderStagedDownloads();
+
+      // Throttle parsing with concurrency = 3
+      const concurrency = 3;
+      let currIdx = startIndex;
+
+      async function parseWorker() {
+        while (currIdx < stagedDownloads.length) {
+          const itemIdx = currIdx++;
+          const item = stagedDownloads[itemIdx];
+          if (!item || item.status !== "parsing") continue;
+
+          try {
+            let platform = "url";
+            if (/civitai\.(com|red|green)/i.test(item.url)) platform = "civitai";
+            else if (/huggingface\.co/i.test(item.url)) platform = "huggingface";
+
+            const res = await apiFetch(`/model-manager/model-info?model-page=${encodeURIComponent(item.url)}`);
+            if (res && res.success && res.data && res.data.length > 0) {
+              const data = res.data[0];
+              item.parsedData = data;
+              item.platform = (data.downloadPlatform || data.website || platform).toLowerCase();
+              
+              const targetFilename = data.fullname || data.name || (data.basename ? `${data.basename}${data.extension || '.safetensors'}` : "");
+              item.filename = targetFilename || "model.safetensors";
+
+              // Category resolution
+              if (defaultCategory === "AUTO") {
+                const autoCat = data.type;
+                const match = autoCat && Object.keys(state.foldersList).find(f => f.toLowerCase() === autoCat.toLowerCase());
+                item.category = match || autoCat || (state.currentFolder || "checkpoints");
+              } else {
+                item.category = defaultCategory;
+              }
+
+              // Subfolder resolution
+              if (subfolderMode === "AUTO") {
+                item.subfolder = data.subFolder || "";
+              } else if (subfolderMode === "ROOT") {
+                item.subfolder = "";
+              } else if (subfolderMode === "CUSTOM") {
+                item.subfolder = customSubfolderVal;
+              }
+
+              item.sizeBytes = data.sizeBytes || 0;
+              item.preview = data.preview ? (Array.isArray(data.preview) ? data.preview[0] : data.preview) : "";
+              item.status = "ready";
+            } else {
+              // Direct download link or fallback
+              let cleanFile = "model.safetensors";
+              try {
+                const urlObj = new URL(item.url);
+                const pathParts = urlObj.pathname.split("/").filter(Boolean);
+                const rawFile = pathParts[pathParts.length - 1] || "model.safetensors";
+                cleanFile = decodeURIComponent(rawFile.split("?")[0]);
+              } catch (e) {}
+
+              item.filename = cleanFile;
+              item.platform = platform;
+              if (defaultCategory === "AUTO") {
+                item.category = state.currentFolder || "checkpoints";
+              } else {
+                item.category = defaultCategory;
+              }
+              if (subfolderMode === "CUSTOM") item.subfolder = customSubfolderVal;
+              else item.subfolder = "";
+              item.status = "ready";
+            }
+          } catch (err) {
+            item.status = "error";
+            item.errorMsg = err.message || "Failed to parse link";
+          }
+          renderStagedDownloads();
+        }
+      }
+
+      const workers = Array.from({ length: Math.min(concurrency, newItems.length) }, () => parseWorker());
+      await Promise.all(workers);
+    } catch (err) {
+      console.error("[ModelManager] Bulk parse unexpected error:", err);
+    } finally {
+      bulkParseBtn.disabled = false;
+      bulkParseBtn.innerHTML = originalBtnHtml;
+      renderStagedDownloads();
+    }
+  };
+
+  // Start All Downloads handler
+  startAllBtn.onclick = async () => {
+    const readyItems = stagedDownloads.filter(item => item.status === "ready");
+    if (readyItems.length === 0) {
+      alert("No ready items to download. Please parse URLs first or check error items.");
+      return;
+    }
+
+    const originalBtnHtml = startAllBtn.innerHTML;
+    startAllBtn.disabled = true;
+
+    try {
+      for (let i = 0; i < readyItems.length; i++) {
+        const item = readyItems[i];
+        startAllBtn.innerHTML = `<span class="cmm-spin-icon">⏳</span> Queueing (${i + 1}/${readyItems.length})...`;
+
+        const fullname = item.subfolder ? `${item.subfolder}/${item.filename}` : item.filename;
+        let platform = item.platform || "url";
+        if (!platform || platform === "url") {
+          if (/civitai\.(com|red|green)/i.test(item.url)) platform = "civitai";
+          else if (/huggingface\.co/i.test(item.url)) platform = "huggingface";
+        }
+
+        const payload = {
+          type: item.category,
+          pathIndex: 0,
+          fullname: fullname,
+          description: item.parsedData?.description || "",
+          downloadPlatform: platform,
+          downloadUrl: item.parsedData?.downloadUrl || item.url,
+          sizeBytes: item.sizeBytes || 0,
+          previewFile: item.preview || "",
+        };
+
+        try {
+          const res = await apiFetch("/model-manager/model", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams(payload).toString(),
+          });
+          if (res && res.success) {
+            item.status = "queued";
+          } else {
+            item.status = "error";
+            item.errorMsg = (res && res.error) || "Failed to create task";
+          }
+        } catch (err) {
+          item.status = "error";
+          item.errorMsg = err.message || "Network error";
+        }
+        renderStagedDownloads();
+      }
+    } finally {
+      startAllBtn.disabled = false;
+      startAllBtn.innerHTML = originalBtnHtml;
+      fetchTasks();
+    }
+  };
+
+
 
   const refreshBtn = dialog.querySelector("#cmm-dl-refresh-tasks");
   if (refreshBtn) {

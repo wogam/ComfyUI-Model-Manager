@@ -573,3 +573,74 @@ input:checked + .cmm-slider:before {
   transform: translateX(20px);
 }
 
+/* Modal Tabs Navigation */
+.cmm-tabs-nav {
+  display: flex;
+  gap: 6px;
+  background: #181820;
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid #2e2e3a;
+  width: fit-content;
+  margin-bottom: 12px;
+}
+
+.cmm-tab-btn {
+  background: transparent;
+  border: none;
+  color: #8f92a1;
+  padding: 6px 14px;
+  font-size: 0.86rem;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  user-select: none;
+}
+
+.cmm-tab-btn:hover {
+  color: #e0e0e0;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.cmm-tab-btn.active {
+  background: #2563eb;
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);
+}
+
+/* Staging Queue Component */
+.cmm-staging-container {
+  background: #191922;
+  border: 1px solid #2d2d3c;
+  border-radius: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-sizing: border-box;
+}
+
+.cmm-staging-item {
+  background: #23232f;
+  border: 1px solid #333344;
+  border-radius: 6px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  transition: border-color 0.1s ease, background 0.1s ease;
+}
+
+.cmm-staging-item:hover {
+  border-color: #4a4a60;
+  background: #272735;
+}
+
