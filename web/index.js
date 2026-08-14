@@ -984,7 +984,7 @@ async function openDownloadManagerModal() {
   dialog.innerHTML = `
     <div class="cmm-header">
       <div class="cmm-title">
-        <span>📥</span> Model Download Manager
+        <span>📥</span> Downloads
       </div>
       <div class="cmm-header-actions">
         <button class="cmm-btn cmm-btn-icon" id="cmm-download-close">✕</button>
@@ -1022,12 +1022,18 @@ async function openDownloadManagerModal() {
         </div>
       </div>
 
-      <!-- Active Tasks Section -->
+      <!-- Downloads History & Active Section -->
       <div>
-        <h4 style="margin:0 0 12px 0; color:#fff; display:flex; justify-content:space-between; align-items:center;">
-          <span>Active Downloads</span>
-          <button class="cmm-btn cmm-btn-icon" id="cmm-dl-refresh-tasks">🔄</button>
-        </h4>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <h4 style="margin:0; color:#fff; display:flex; align-items:center; gap:8px;">
+            <span>Downloads</span>
+            <span id="cmm-dl-count" style="font-size:0.8rem; font-weight:normal; color:#888;"></span>
+          </h4>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <button class="cmm-btn cmm-btn-icon" id="cmm-dl-clear-completed" title="Clear Completed" style="display:none;">🧹</button>
+            <button class="cmm-btn cmm-btn-icon" id="cmm-dl-refresh-tasks" title="Refresh">🔄</button>
+          </div>
+        </div>
         <div id="cmm-tasks-container">
           <div style="color:#888; text-align:center; padding:20px;">Loading task list...</div>
         </div>
@@ -1063,9 +1069,14 @@ async function openDownloadManagerModal() {
   let parsedData = null;
 
   // Parse URL & Auto-fill Category, Subfolder, Filename (formatted like import.py: {Model Name} - {Version Name}.safetensors)
-  dialog.querySelector("#cmm-dl-parse-btn").onclick = async () => {
+  const parseBtn = dialog.querySelector("#cmm-dl-parse-btn");
+  parseBtn.onclick = async () => {
     const url = dialog.querySelector("#cmm-dl-url").value.trim();
     if (!url) return alert("Please enter a URL first.");
+
+    const originalBtnContent = parseBtn.innerHTML;
+    parseBtn.disabled = true;
+    parseBtn.innerHTML = `<span class="cmm-spin-icon">⏳</span> Parsing...`;
 
     try {
       const res = await apiFetch(`/model-manager/model-info?model-page=${encodeURIComponent(url)}`);
@@ -1097,6 +1108,9 @@ async function openDownloadManagerModal() {
       }
     } catch (err) {
       console.error("[ModelManager] Parse error:", err.message);
+    } finally {
+      parseBtn.disabled = false;
+      parseBtn.innerHTML = originalBtnContent;
     }
   };
 
@@ -1115,12 +1129,23 @@ async function openDownloadManagerModal() {
     const fullname = subFolder ? `${subFolder}/${basename}` : basename;
     const previewFile = parsedData?.preview ? (Array.isArray(parsedData.preview) ? parsedData.preview[0] : parsedData.preview) : "";
 
+    let platform = (parsedData?.downloadPlatform || parsedData?.website || "").toLowerCase();
+    if (!platform || platform === "url") {
+      if (/civitai\.(com|red|green)/i.test(url)) {
+        platform = "civitai";
+      } else if (/huggingface\.co/i.test(url)) {
+        platform = "huggingface";
+      } else {
+        platform = "url";
+      }
+    }
+
     const payload = {
       type,
       pathIndex: 0,
       fullname,
       description: parsedData?.description || "",
-      downloadPlatform: parsedData?.website || "URL",
+      downloadPlatform: platform,
       downloadUrl: parsedData?.downloadUrl || url,
       sizeBytes: parsedData?.sizeBytes || 0,
       previewFile: previewFile || "",
@@ -1147,50 +1172,146 @@ async function openDownloadManagerModal() {
     }
   };
 
-  dialog.querySelector("#cmm-dl-refresh-tasks").onclick = () => fetchTasks();
+  const refreshBtn = dialog.querySelector("#cmm-dl-refresh-tasks");
+  if (refreshBtn) {
+    refreshBtn.onclick = () => fetchTasks();
+  }
+
+  let latestTasks = [];
+
+  const clearCompletedBtn = dialog.querySelector("#cmm-dl-clear-completed");
+  if (clearCompletedBtn) {
+    clearCompletedBtn.onclick = async () => {
+      const completedTasks = latestTasks.filter(t => ["completed", "complete", "done"].includes((t.status || "").toLowerCase()));
+      if (completedTasks.length === 0) return;
+      for (const t of completedTasks) {
+        try {
+          await apiFetch(`/model-manager/download/${t.taskId}`, { method: "DELETE" });
+        } catch (err) {
+          console.warn("[ModelManager] Failed to clear task:", t.taskId, err);
+        }
+      }
+      fetchTasks();
+    };
+  }
 
   async function fetchTasks() {
     const container = dialog.querySelector("#cmm-tasks-container");
+    const countBadge = dialog.querySelector("#cmm-dl-count");
+    if (!container) return;
+
     try {
       const res = await apiFetch("/model-manager/download/task");
       if (res.success && Array.isArray(res.data)) {
-        if (res.data.length === 0) {
-          container.innerHTML = `<div style="color:#888; text-align:center; padding:20px;">No download tasks.</div>`;
+        latestTasks = res.data;
+        
+        if (countBadge) {
+          countBadge.textContent = latestTasks.length > 0 ? `(${latestTasks.length})` : "";
+        }
+
+        const completedCount = latestTasks.filter(t => ["completed", "complete", "done"].includes((t.status || "").toLowerCase())).length;
+        if (clearCompletedBtn) {
+          clearCompletedBtn.style.display = completedCount > 0 ? "inline-block" : "none";
+        }
+
+        if (latestTasks.length === 0) {
+          container.innerHTML = `<div style="color:#888; text-align:center; padding:30px;">No download tasks in history.</div>`;
           return;
         }
 
         container.innerHTML = "";
-        res.data.forEach(task => {
+        latestTasks.forEach(task => {
           const item = document.createElement("div");
           item.className = "cmm-task-item";
 
-          const pct = task.progress || 0;
-          const statusColor = task.status === "doing" ? "#3b82f6" : task.status === "error" ? "#ef4444" : "#888";
+          const pct = Math.min(100, Math.max(0, task.progress || 0));
+          const status = (task.status || "pause").toLowerCase();
+
+          let statusBadgeClass = "cmm-badge-pause";
+          let statusLabel = "⏸️ Paused";
+          let progressFillColor = "#6b7280";
+          let detailText = "";
+          let actionButtons = "";
+
+          if (status === "doing" || status === "downloading") {
+            statusBadgeClass = "cmm-badge-downloading";
+            statusLabel = "⬇️ Downloading";
+            progressFillColor = "#3b82f6";
+            detailText = `<span>${formatBytes(task.downloadedSize)} / ${formatBytes(task.totalSize)} (${pct.toFixed(1)}%)</span><span>⚡ ${formatBytes(task.bps)}/s</span>`;
+            actionButtons = `
+              <button class="cmm-btn cmm-btn-pause" data-id="${task.taskId}">⏸️ Pause</button>
+              <button class="cmm-btn cmm-btn-danger cmm-btn-del" data-id="${task.taskId}">🗑️ Cancel</button>
+            `;
+          } else if (status === "retrying") {
+            statusBadgeClass = "cmm-badge-retrying";
+            statusLabel = "🔄 Retrying...";
+            progressFillColor = "#f59e0b";
+            detailText = `<span>${formatBytes(task.downloadedSize)} / ${formatBytes(task.totalSize)} (${pct.toFixed(1)}%)</span><span>🔄 Reconnecting...</span>`;
+            actionButtons = `
+              <button class="cmm-btn cmm-btn-pause" data-id="${task.taskId}">⏸️ Pause</button>
+              <button class="cmm-btn cmm-btn-danger cmm-btn-del" data-id="${task.taskId}">🗑️ Cancel</button>
+            `;
+          } else if (status === "completed" || status === "complete" || status === "done") {
+            statusBadgeClass = "cmm-badge-completed";
+            statusLabel = "✅ Completed";
+            progressFillColor = "#10b981";
+            detailText = `<span>${formatBytes(task.totalSize || task.downloadedSize)} • Ready to use</span><span>100%</span>`;
+            actionButtons = `
+              <button class="cmm-btn cmm-btn-del" data-id="${task.taskId}" title="Remove from history">🗑️ Clear</button>
+            `;
+          } else if (status === "error" || status === "failed") {
+            statusBadgeClass = "cmm-badge-error";
+            statusLabel = "❌ Failed";
+            progressFillColor = "#ef4444";
+            detailText = `<span>${formatBytes(task.downloadedSize)} / ${formatBytes(task.totalSize)} (${pct.toFixed(1)}%)</span>`;
+            actionButtons = `
+              <button class="cmm-btn cmm-btn-retry" data-id="${task.taskId}">🔁 Retry</button>
+              <button class="cmm-btn cmm-btn-danger cmm-btn-del" data-id="${task.taskId}">🗑️ Delete</button>
+            `;
+          } else if (status === "waiting" || status === "queued") {
+            statusBadgeClass = "cmm-badge-waiting";
+            statusLabel = "⏳ Queued";
+            progressFillColor = "#8b5cf6";
+            detailText = `<span>Waiting in queue...</span>`;
+            actionButtons = `
+              <button class="cmm-btn cmm-btn-danger cmm-btn-del" data-id="${task.taskId}">🗑️ Cancel</button>
+            `;
+          } else {
+            // Paused
+            statusBadgeClass = "cmm-badge-pause";
+            statusLabel = "⏸️ Paused";
+            progressFillColor = "#6b7280";
+            detailText = `<span>${formatBytes(task.downloadedSize)} / ${formatBytes(task.totalSize)} (${pct.toFixed(1)}%)</span><span>Paused</span>`;
+            actionButtons = `
+              <button class="cmm-btn cmm-btn-start" data-id="${task.taskId}">▶️ Resume</button>
+              <button class="cmm-btn cmm-btn-danger cmm-btn-del" data-id="${task.taskId}">🗑️ Delete</button>
+            `;
+          }
 
           item.innerHTML = `
-            <div class="cmm-task-row">
-              <span style="font-weight:600; color:#fff;">${task.fullname}</span>
-              <span class="cmm-badge" style="background:${statusColor}; color:#fff;">${(task.status || '').toUpperCase()}</span>
+            <div class="cmm-task-row" style="align-items:flex-start; gap:12px;">
+              <span style="font-weight:600; color:#fff; flex:1; min-width:0; word-break:break-word; line-height:1.4;" title="${task.fullname}">${task.fullname}</span>
+              <span class="cmm-badge ${statusBadgeClass}">${statusLabel}</span>
             </div>
             <div class="cmm-progress-bar">
-              <div class="cmm-progress-fill" style="width:${pct}%; background:${statusColor};"></div>
+              <div class="cmm-progress-fill" style="width:${status === 'completed' ? 100 : pct}%; background:${progressFillColor};"></div>
             </div>
             <div class="cmm-task-row" style="font-size:0.78rem; color:#aaa;">
-              <span>${formatBytes(task.downloadedSize)} / ${formatBytes(task.totalSize)} (${pct.toFixed(1)}%)</span>
-              <span>${formatBytes(task.bps)}/s</span>
+              ${detailText}
             </div>
-            ${task.error ? `<div style="color:#ef4444; font-size:0.8rem;">Error: ${task.error}</div>` : ''}
+            ${task.error ? `<div style="color:#f87171; font-size:0.8rem; background:rgba(239,68,68,0.1); padding:5px 8px; border-radius:4px; border:1px solid rgba(239,68,68,0.25);">⚠️ ${task.error}</div>` : ''}
             <div style="display:flex; justify-content:flex-end; gap:8px;">
-              ${task.status === "doing" ? `<button class="cmm-btn cmm-btn-pause" data-id="${task.taskId}">⏸️ Pause</button>` : ''}
-              ${task.status === "pause" ? `<button class="cmm-btn cmm-btn-start" data-id="${task.taskId}">▶️ Start</button>` : ''}
-              <button class="cmm-btn cmm-btn-danger cmm-btn-del" data-id="${task.taskId}">🗑️ Delete</button>
+              ${actionButtons}
             </div>
           `;
 
-          item.querySelector(".cmm-btn-del").onclick = async () => {
-            await apiFetch(`/model-manager/download/${task.taskId}`, { method: "DELETE" });
-            fetchTasks();
-          };
+          const delBtn = item.querySelector(".cmm-btn-del");
+          if (delBtn) {
+            delBtn.onclick = async () => {
+              await apiFetch(`/model-manager/download/${task.taskId}`, { method: "DELETE" });
+              fetchTasks();
+            };
+          }
 
           const pauseBtn = item.querySelector(".cmm-btn-pause");
           if (pauseBtn) {
@@ -1216,14 +1337,26 @@ async function openDownloadManagerModal() {
             };
           }
 
+          const retryBtn = item.querySelector(".cmm-btn-retry");
+          if (retryBtn) {
+            retryBtn.onclick = async () => {
+              await apiFetch(`/model-manager/download/${task.taskId}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ status: "retry" }),
+              });
+              fetchTasks();
+            };
+          }
+
           container.appendChild(item);
         });
       } else {
-        container.innerHTML = `<div style="color:#888; text-align:center; padding:20px;">No download tasks.</div>`;
+        container.innerHTML = `<div style="color:#888; text-align:center; padding:30px;">No download tasks in history.</div>`;
       }
     } catch (err) {
       console.error(err);
-      container.innerHTML = `<div style="color:#888; text-align:center; padding:20px;">No download tasks.</div>`;
+      container.innerHTML = `<div style="color:#888; text-align:center; padding:30px;">No download tasks in history.</div>`;
     }
   }
 

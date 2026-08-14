@@ -380,7 +380,7 @@ def save_model_preview(model_path: str, file_or_url: Any, platform: Optional[str
             return
 
         try:
-            session = create_request_session(platform=platform)
+            session = create_request_session(request=request, platform=platform)
             response = session.get(url, timeout=15)
             response.raise_for_status()
             
@@ -568,10 +568,28 @@ def set_setting_value(request: web.Request, key: str, value: Any):
     config.serverInstance.user_manager.settings.save_settings(request, settings)
 
 
-def get_setting_value(request: web.Request, key: str, default: Any = None) -> Any:
-    setting_id = resolve_setting_key(key)
-    settings = config.serverInstance.user_manager.settings.get_settings(request)
-    return settings.get(setting_id, default)
+def get_setting_value(request: Optional[web.Request], key: str, default: Any = None) -> Any:
+    try:
+        setting_id = resolve_setting_key(key)
+        settings = config.serverInstance.user_manager.settings.get_settings(request)
+        return settings.get(setting_id, default)
+    except Exception:
+        return default
+
+
+def get_api_key(request: Optional[web.Request] = None, platform: str = "civitai") -> str:
+    platform = (platform or "civitai").lower()
+    val = ""
+    try:
+        val = get_setting_value(request, f"api_key.{platform}", "")
+    except Exception:
+        pass
+    if not val:
+        try:
+            val = get_setting_value(None, f"api_key.{platform}", "")
+        except Exception:
+            pass
+    return str(val or "").strip()
 
 
 async def send_json(event: str, data: Any, sid: str = None):

@@ -135,8 +135,9 @@ class CivitaiModelSearcher(ModelSearcher):
                 fullname = f"{basename}{extension}"
                 download_url = file.get("downloadUrl", "")
 
-                if domain and domain != "civitai.com" and "civitai.com" in download_url:
-                    download_url = download_url.replace("civitai.com", domain)
+                # Ensure binary file download URL always defaults to civitai.com
+                if download_url and any(m in download_url for m in ["civitai.red", "civitai.green"]):
+                    download_url = re.sub(r"://civitai\.(red|green)", "://civitai.com", download_url)
 
                 published_at = version.get("publishedAt") or res_data.get("publishedAt") or res_data.get("createdAt")
 

@@ -198,3 +198,6 @@ config/
 
 # private info
 private.key
+
+# local changes log
+.changes

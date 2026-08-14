@@ -1,4 +1,5 @@
 import os
+import re
 import uuid
 import time
 import requests
@@ -24,7 +25,7 @@ class TaskStatus:
     type: str
     fullname: str
     preview: str
-    status: Literal["pause", "waiting", "doing"] = "pause"
+    status: Literal["pause", "waiting", "doing", "retrying", "completed", "error"] = "pause"
     platform: Union[str, None] = None
     downloadedSize: float = 0
     totalSize: float = 0
@@ -123,7 +124,10 @@ class ApiKey:
         return result
 
     def get_value(self, key: str):
-        return self.__store.get(key, None)
+        val = self.__store.get(key, None)
+        if not val:
+            val = utils.get_api_key(None, key)
+        return val
 
     def set_value(self, key: str, value: str):
         self.__store[key] = value
@@ -184,7 +188,11 @@ class ModelDownload:
                 status = json_data.get("status", None)
                 if status == "pause":
                     await self.pause_model_download_task(task_id)
-                elif status == "resume":
+                elif status in ("resume", "retry"):
+                    task_status = self.get_task_status(task_id)
+                    task_status.error = None
+                    task_status.status = "retrying" if status == "retry" else "waiting"
+                    await utils.send_json("update_download_task", task_status.to_dict())
                     await self.download_model(task_id, request)
                 else:
                     raise web.HTTPBadRequest(reason="Invalid status")
@@ -296,10 +304,21 @@ class ModelDownload:
             reverse=True,
         )
         task_list: list[dict] = []
+        seen_task_ids = set()
+
         for task_file in task_files:
             task_id = task_file.replace(".task", "")
-            task_status = self.get_task_status(task_id)
-            task_list.append(task_status.to_dict())
+            seen_task_ids.add(task_id)
+            try:
+                task_status = self.get_task_status(task_id)
+                task_list.append(task_status.to_dict())
+            except Exception as e:
+                utils.print_warning(f"Failed to get task status for {task_id}: {e}")
+
+        # Include session history tasks (completed / errored) stored in memory
+        for task_id, task_status in list(self.download_model_task_status.items()):
+            if task_id not in seen_task_ids:
+                task_list.append(task_status.to_dict())
 
         return task_list
 
@@ -322,7 +341,13 @@ class ModelDownload:
         task_path = utils.join_path(download_path, f"{task_id}.task")
         if os.path.exists(task_path):
             raise RuntimeError(f"Task {task_id} already exists")
-        download_platform = task_data.get("downloadPlatform", None)
+        download_platform = (task_data.get("downloadPlatform") or "").lower()
+        if not download_platform or download_platform == "url":
+            if any(d in (task_data.get("downloadUrl") or "") for d in ["civitai.com", "civitai.red", "civitai.green"]):
+                download_platform = "civitai"
+            elif "huggingface" in (task_data.get("downloadUrl") or ""):
+                download_platform = "huggingface"
+        task_data["downloadPlatform"] = download_platform
 
         try:
             preview_file = task_data.pop("previewFile", None)
@@ -350,24 +375,30 @@ class ModelDownload:
         task_status.status = "pause"
 
     async def delete_model_download_task(self, task_id: str):
-        task_status = self.get_task_status(task_id)
-        is_running = task_status.status == "doing"
-        task_status.status = "waiting"
+        task_status = self.download_model_task_status.get(task_id, None)
+        is_running = task_status is not None and task_status.status in ("doing", "retrying")
+        if task_status:
+            task_status.status = "waiting"
         await utils.send_json("delete_download_task", task_id)
 
         # Pause the task
         if is_running:
-            task_status.status = "pause"
+            if task_status:
+                task_status.status = "pause"
             time.sleep(1)
 
         download_dir = utils.get_download_path()
-        task_file_list = os.listdir(download_dir)
-        for task_file in task_file_list:
-            task_file_target = os.path.splitext(task_file)[0]
-            if task_file_target == task_id:
-                self.delete_task_status(task_id)
-                os.remove(utils.join_path(download_dir, task_file))
+        if os.path.exists(download_dir):
+            task_file_list = os.listdir(download_dir)
+            for task_file in task_file_list:
+                task_file_target = os.path.splitext(task_file)[0]
+                if task_file_target == task_id:
+                    try:
+                        os.remove(utils.join_path(download_dir, task_file))
+                    except Exception:
+                        pass
 
+        self.delete_task_status(task_id)
         await utils.send_json("delete_download_task", task_id)
 
     async def download_model(self, task_id: str, request):
@@ -383,21 +414,28 @@ class ModelDownload:
 
             # Update task status
             task_status.status = "doing"
+            task_status.error = None
             await utils.send_json("update_download_task", task_status.to_dict())
 
             try:
-
                 # Set download request headers
                 headers = {"User-Agent": config.user_agent}
 
-                download_platform = task_status.platform
-                if download_platform == "civitai":
-                    api_key = self.api_key.get_value("civitai")
+                download_platform = str(task_status.platform or "").lower()
+                if not download_platform or download_platform == "url":
+                    task_content = self.get_task_content(task_id)
+                    if any(d in (task_content.downloadUrl or "") for d in ["civitai.com", "civitai.red", "civitai.green"]):
+                        download_platform = "civitai"
+                    elif "huggingface" in (task_content.downloadUrl or ""):
+                        download_platform = "huggingface"
+
+                if "civitai" in download_platform:
+                    api_key = utils.get_api_key(request, "civitai") or self.api_key.get_value("civitai")
                     if api_key:
                         headers["Authorization"] = f"Bearer {api_key}"
 
-                elif download_platform == "huggingface":
-                    api_key = self.api_key.get_value("huggingface")
+                elif "huggingface" in download_platform:
+                    api_key = utils.get_api_key(request, "huggingface") or self.api_key.get_value("huggingface")
                     if api_key:
                         headers["Authorization"] = f"Bearer {api_key}"
 
@@ -407,12 +445,13 @@ class ModelDownload:
                     headers=headers,
                     progress_callback=report_progress,
                     interval=progress_interval,
+                    request=request,
                 )
             except Exception as e:
-                task_status.status = "pause"
+                task_status.status = "error"
                 task_status.error = str(e)
+                task_status.bps = 0
                 await utils.send_json("update_download_task", task_status.to_dict())
-                task_status.error = None
                 utils.print_error(str(e))
 
         try:
@@ -422,10 +461,12 @@ class ModelDownload:
                 task_status.status = "waiting"
                 await utils.send_json("update_download_task", task_status.to_dict())
         except Exception as e:
-            task_status.status = "pause"
-            task_status.error = str(e)
-            await utils.send_json("update_download_task", task_status.to_dict())
-            task_status.error = None
+            task_status = self.download_model_task_status.get(task_id, None)
+            if task_status:
+                task_status.status = "error"
+                task_status.error = str(e)
+                task_status.bps = 0
+                await utils.send_json("update_download_task", task_status.to_dict())
             utils.print_error(str(e))
 
     async def download_model_file(
@@ -434,6 +475,7 @@ class ModelDownload:
         headers: dict,
         progress_callback: Callable[[TaskStatus], Awaitable[Any]],
         interval: float = 1.0,
+        request: Optional[web.Request] = None,
     ):
 
         async def download_complete():
@@ -447,8 +489,11 @@ class ModelDownload:
             # Write description file
             description = task_content.description
             description_file = utils.join_path(download_path, f"{task_id}.md")
-            with open(description_file, "w", encoding="utf-8", newline="") as f:
-                f.write(description)
+            try:
+                with open(description_file, "w", encoding="utf-8", newline="") as f:
+                    f.write(description)
+            except Exception as e:
+                utils.print_warning(f"Could not write description file: {e}")
 
             model_path = utils.get_full_path(model_type, path_index, fullname)
 
@@ -456,8 +501,19 @@ class ModelDownload:
 
             time.sleep(1)
             task_file = utils.join_path(download_path, f"{task_id}.task")
-            os.remove(task_file)
+            if os.path.exists(task_file):
+                try:
+                    os.remove(task_file)
+                except Exception:
+                    pass
+
+            task_status.status = "completed"
+            task_status.progress = 100.0
+            task_status.downloadedSize = total_size if total_size > 0 else downloaded_size
+            task_status.bps = 0
+            task_status.error = None
             await utils.send_json("complete_download_task", task_id)
+            await utils.send_json("update_download_task", task_status.to_dict())
 
         async def update_progress():
             nonlocal last_update_time
@@ -495,15 +551,64 @@ class ModelDownload:
         last_update_time = time.time()
         last_downloaded_size = downloaded_size
 
-        response = requests.get(
-            url=model_url,
-            headers=headers,
-            stream=True,
-            allow_redirects=True,
+        is_civitai = (
+            "civitai" in str(task_status.platform or "").lower()
+            or "civitai" in str(task_content.downloadPlatform or "").lower()
+            or any(d in model_url for d in ["civitai.com", "civitai.red", "civitai.green"])
         )
 
-        if response.status_code not in (200, 206):
-            raise RuntimeError(f"Failed to download {task_content.fullname}, status code: {response.status_code}")
+        civitai_api_key = (utils.get_api_key(request, "civitai") or self.api_key.get_value("civitai")) if is_civitai else ""
+        if civitai_api_key:
+            headers["Authorization"] = f"Bearer {civitai_api_key}"
+
+        if is_civitai:
+            primary_url = re.sub(r"://civitai\.(red|green)", "://civitai.com", model_url)
+            # Ensure Civitai API key is passed in URL query param to survive storage CDN redirects
+            if civitai_api_key and "token=" not in primary_url:
+                sep = "&" if "?" in primary_url else "?"
+                primary_url = f"{primary_url}{sep}token={civitai_api_key}"
+
+            urls_to_try = [primary_url]
+            for mirror in ["civitai.red", "civitai.green"]:
+                mirror_url = re.sub(r"://civitai\.(com|red|green)", f"://{mirror}", primary_url)
+                if mirror_url not in urls_to_try:
+                    urls_to_try.append(mirror_url)
+        else:
+            urls_to_try = [model_url]
+
+        response = None
+        last_error = None
+
+        session = utils.create_request_session(request, platform=task_status.platform, traffic_type="download")
+
+        for current_url in urls_to_try:
+            try:
+                res = session.get(
+                    url=current_url,
+                    headers=headers,
+                    stream=True,
+                    allow_redirects=True,
+                    timeout=30,
+                )
+                if res.status_code in (200, 206):
+                    content_type = res.headers.get("content-type", "")
+                    if content_type and content_type.startswith("text/html"):
+                        raise RuntimeError(f"{task_content.fullname} needs to be logged in to download. Please set the API-Key first.")
+                    response = res
+                    break
+                else:
+                    utils.print_warning(f"Download from {current_url} failed with status {res.status_code}, trying mirror fallback if available...")
+                    last_error = RuntimeError(f"Failed to download {task_content.fullname}, status code: {res.status_code}")
+            except Exception as e:
+                if "needs to be logged in" in str(e):
+                    raise e
+                utils.print_warning(f"Download error from {current_url}: {e}")
+                last_error = e
+
+        if not response:
+            if last_error:
+                raise last_error
+            raise RuntimeError(f"Failed to download {task_content.fullname}")
 
         # Some models require logging in before they can be downloaded.
         # If no token is carried, it will be redirected to the login page.
