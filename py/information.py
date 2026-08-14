@@ -142,7 +142,7 @@ class CivitaiModelSearcher(ModelSearcher):
 
                 metadata_info = {
                     "website": "Civitai",
-                    "modelPage": f"https://{domain}/models/{model_id}?modelVersionId={version.get('id')}",
+                    "modelPage": f"https://civitai.red/models/{model_id}?modelVersionId={version.get('id')}",
                     "author": res_data.get("creator", {}).get("username", None),
                     "baseModel": base_model,
                     "publishedAt": published_at,
@@ -200,7 +200,7 @@ class CivitaiModelSearcher(ModelSearcher):
         
         response = None
         last_error = None
-        for d in ["civitai.com", "civitai.red"]:
+        for d in ["civitai.red", "civitai.com"]:
             try:
                 response = session.get(f"https://{d}/api/v1/model-versions/by-hash/{hash}", timeout=12)
                 response.raise_for_status()
@@ -217,7 +217,7 @@ class CivitaiModelSearcher(ModelSearcher):
         model_id = version.get("modelId")
         version_id = version.get("id")
 
-        model_page = f"https://civitai.com/models/{model_id}?modelVersionId={version_id}"
+        model_page = f"https://civitai.red/models/{model_id}?modelVersionId={version_id}"
 
         models = self.search_by_url(model_page, request=request)
 

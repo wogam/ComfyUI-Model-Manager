@@ -206,7 +206,13 @@ function parseMarkdown(md) {
   html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
 
   // Links [text](url)
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color:#60a5fa; text-decoration:underline;">$1</a>');
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
+    let targetUrl = url;
+    if (typeof targetUrl === "string" && /civitai\.(com|green)/i.test(targetUrl)) {
+      targetUrl = targetUrl.replace(/civitai\.(com|green)/gi, "civitai.red");
+    }
+    return `<a href="${targetUrl}" target="_blank" rel="noopener noreferrer" style="color:#60a5fa; text-decoration:underline;">${text}</a>`;
+  });
 
   // Bullet lists (- or *)
   html = html.replace(/^\s*[-*]\s+(.*$)/gim, '<li style="margin-left:18px;">$1</li>');
@@ -730,8 +736,11 @@ async function openModelDetailModal(model, onRefresh) {
       pubRow.style.display = "none";
     }
 
-    const mPage = info.modelPage || info.model_page;
+    let mPage = info.modelPage || info.model_page;
     if (mPage) {
+      if (typeof mPage === "string" && /civitai\.(com|green)/i.test(mPage)) {
+        mPage = mPage.replace(/civitai\.(com|green)/gi, "civitai.red");
+      }
       modelPageLink.href = mPage;
       modelPageRow.style.display = "block";
     } else {
@@ -747,7 +756,11 @@ async function openModelDetailModal(model, onRefresh) {
       let valStr = "";
 
       if (k === "modelPage" && v) {
-        valStr = `<a href="${v}" target="_blank" rel="noopener noreferrer" style="color:#60a5fa; font-weight:600; text-decoration:underline;">${v} ↗</a>`;
+        let linkUrl = v;
+        if (typeof linkUrl === "string" && /civitai\.(com|green)/i.test(linkUrl)) {
+          linkUrl = linkUrl.replace(/civitai\.(com|green)/gi, "civitai.red");
+        }
+        valStr = `<a href="${linkUrl}" target="_blank" rel="noopener noreferrer" style="color:#60a5fa; font-weight:600; text-decoration:underline;">${linkUrl} ↗</a>`;
       } else if ((k === "publishedAt" || k === "createdAt") && v) {
         valStr = formatDate(v);
       } else if (typeof v === "object" && v !== null) {
