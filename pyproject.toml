@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-model-manager"
 description = "Lightweight native ComfyUI extension to browse, manage, scan, download, and upload models with SOCKS5 proxy and FFmpeg WebP support."
-version = "3.0.0"
+version = "3.1.0"
 license = { file = "LICENSE" }
 dependencies = [
     "markdownify",

@@ -644,3 +644,29 @@ input:checked + .cmm-slider:before {
   background: #272735;
 }
 
+/* Settings Help Tooltip Icon */
+.cmm-help-tip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #333344;
+  color: #9ca3af;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: help;
+  margin-left: 6px;
+  vertical-align: middle;
+  transition: background 0.15s ease, color 0.15s ease;
+  user-select: none;
+  line-height: 1;
+}
+
+.cmm-help-tip:hover {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+

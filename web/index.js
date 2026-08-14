@@ -1973,50 +1973,59 @@ async function openSettingsModal(onSaveCallback) {
         <span>⚙️</span> Model Manager Settings
       </div>
       <div class="cmm-header-actions">
-        <button class="cmm-btn cmm-btn-icon" id="cmm-settings-close">✕</button>
+        <button class="cmm-btn cmm-btn-icon" id="cmm-settings-close" title="Close settings">✕</button>
       </div>
     </div>
 
     <div class="cmm-body" style="padding:20px; display:flex; flex-direction:column; gap:16px; overflow-y:auto;">
       <div>
-        <label style="display:block; font-size:0.88rem; font-weight:600; margin-bottom:4px;">Civitai API Key:</label>
+        <label style="display:block; font-size:0.88rem; font-weight:600; margin-bottom:4px;" title="Civitai API Key for authentication">
+          Civitai API Key:
+          <span class="cmm-help-tip" title="API key from civitai.com account settings. Required for downloading early access or NSFW models, fetching private metadata, and avoiding API rate limits.">?</span>
+        </label>
         <div style="display:flex; gap:6px;">
-          <input type="password" class="cmm-input" id="cmm-set-civitai-key" style="flex:1;" placeholder="Optional API Key for Civitai..." />
-          <button class="cmm-btn cmm-btn-icon" id="cmm-toggle-civitai-visibility" title="Show/Hide">👁️</button>
+          <input type="password" class="cmm-input" id="cmm-set-civitai-key" style="flex:1;" placeholder="Optional API Key for Civitai..." title="Enter your Civitai API key (from civitai.com -> Account Settings -> API Keys)" />
+          <button class="cmm-btn cmm-btn-icon" id="cmm-toggle-civitai-visibility" title="Toggle Civitai API key visibility (Show/Hide)">👁️</button>
         </div>
       </div>
 
       <div>
-        <label style="display:block; font-size:0.88rem; font-weight:600; margin-bottom:4px;">HuggingFace API Token:</label>
+        <label style="display:block; font-size:0.88rem; font-weight:600; margin-bottom:4px;" title="HuggingFace User Access Token">
+          HuggingFace API Token:
+          <span class="cmm-help-tip" title="User Access Token from huggingface.co/settings/tokens. Required for downloading gated repositories (e.g., SDXL, Flux) or private models.">?</span>
+        </label>
         <div style="display:flex; gap:6px;">
-          <input type="password" class="cmm-input" id="cmm-set-hf-token" style="flex:1;" placeholder="Optional Token for HuggingFace..." />
-          <button class="cmm-btn cmm-btn-icon" id="cmm-toggle-hf-visibility" title="Show/Hide">👁️</button>
+          <input type="password" class="cmm-input" id="cmm-set-hf-token" style="flex:1;" placeholder="Optional Token for HuggingFace..." title="Enter your HuggingFace User Access Token (read permission is sufficient)" />
+          <button class="cmm-btn cmm-btn-icon" id="cmm-toggle-hf-visibility" title="Toggle HuggingFace token visibility (Show/Hide)">👁️</button>
         </div>
       </div>
 
       <!-- SOCKS5 Proxy Enclosure with Civitai and HuggingFace Toggles -->
       <div style="background:#1a1a24; border:1px solid #2d2d3a; border-radius:8px; padding:14px;">
-        <div style="font-weight:600; font-size:0.92rem; color:#fff; margin-bottom:10px;">SOCKS5 Proxy Configuration</div>
+        <div style="font-weight:600; font-size:0.92rem; color:#fff; margin-bottom:10px; display:flex; align-items:center;" title="Configure SOCKS5 proxy to bypass regional restrictions or network firewalls">
+          SOCKS5 Proxy Configuration
+          <span class="cmm-help-tip" title="Route Civitai or HuggingFace network traffic through a local or remote SOCKS5 proxy server (e.g. Clash, V2Ray, Shadowsocks, SSH tunnel).">?</span>
+        </div>
         
         <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:12px;">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div style="display:flex; justify-content:space-between; align-items:center;" title="Route Civitai API queries and metadata lookups through your SOCKS5 proxy">
             <div>
               <div style="font-size:0.86rem; font-weight:600; color:#e0e0e0;">Use Proxy for Civitai</div>
               <div style="font-size:0.75rem; color:#888;">Route Civitai API queries & info lookups</div>
             </div>
-            <label class="cmm-switch">
-              <input type="checkbox" id="cmm-set-proxy-civitai" />
+            <label class="cmm-switch" title="Toggle SOCKS5 proxy routing for Civitai">
+              <input type="checkbox" id="cmm-set-proxy-civitai" title="Toggle SOCKS5 proxy routing for Civitai" />
               <span class="cmm-slider"></span>
             </label>
           </div>
 
-          <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div style="display:flex; justify-content:space-between; align-items:center;" title="Route HuggingFace API queries and model lookups through your SOCKS5 proxy">
             <div>
               <div style="font-size:0.86rem; font-weight:600; color:#e0e0e0;">Use Proxy for HuggingFace</div>
               <div style="font-size:0.75rem; color:#888;">Route HuggingFace API queries & info lookups</div>
             </div>
-            <label class="cmm-switch">
-              <input type="checkbox" id="cmm-set-proxy-hf" />
+            <label class="cmm-switch" title="Toggle SOCKS5 proxy routing for HuggingFace">
+              <input type="checkbox" id="cmm-set-proxy-hf" title="Toggle SOCKS5 proxy routing for HuggingFace" />
               <span class="cmm-slider"></span>
             </label>
           </div>
@@ -2024,89 +2033,104 @@ async function openSettingsModal(onSaveCallback) {
 
         <div id="cmm-proxy-fields-container" style="display:none; flex-direction:column; gap:10px; border-top:1px solid #2d2d3a; padding-top:12px;">
           <div>
-            <label style="display:block; font-size:0.8rem; color:#aaa; margin-bottom:4px;">Proxy Routing Mode:</label>
-            <select class="cmm-select" id="cmm-set-proxy-scope" style="width:100%; box-sizing:border-box;">
-              <option value="api_only">API & Metadata Only (Recommended - Bypass blocks, fast downloads)</option>
-              <option value="all">Route All Traffic (API Queries + File Downloads)</option>
+            <label style="display:block; font-size:0.8rem; color:#aaa; margin-bottom:4px;" title="Determine whether downloads or only API queries pass through the proxy">
+              Proxy Routing Mode:
+              <span class="cmm-help-tip" title="Choose whether to route only API metadata queries (recommended to save bandwidth and maximize download speed) or all traffic including large model files.">?</span>
+            </label>
+            <select class="cmm-select" id="cmm-set-proxy-scope" style="width:100%; box-sizing:border-box;" title="Select proxy routing scope">
+              <option value="api_only" title="Routes API queries and metadata lookups via proxy, while file downloads stream directly for maximum speed">API & Metadata Only (Recommended - Bypass blocks, fast downloads)</option>
+              <option value="all" title="Routes both API queries and large model file downloads entirely through the proxy">Route All Traffic (API Queries + File Downloads)</option>
             </select>
           </div>
 
           <div style="display:grid; grid-template-columns: 2fr 1fr; gap:10px;">
             <div>
-              <label style="display:block; font-size:0.8rem; color:#aaa; margin-bottom:2px;">Host / Server:</label>
-              <input type="text" class="cmm-input" id="cmm-set-proxy-host" placeholder="e.g. 127.0.0.1 or proxy.example.com" style="width:100%; box-sizing:border-box;" />
+              <label style="display:block; font-size:0.8rem; color:#aaa; margin-bottom:2px;" title="SOCKS5 Server hostname or IP address">Host / Server:</label>
+              <input type="text" class="cmm-input" id="cmm-set-proxy-host" placeholder="e.g. 127.0.0.1 or proxy.example.com" style="width:100%; box-sizing:border-box;" title="SOCKS5 proxy IP address or hostname (e.g. 127.0.0.1 for local clients)" />
             </div>
             <div>
-              <label style="display:block; font-size:0.8rem; color:#aaa; margin-bottom:2px;">Port:</label>
-              <input type="text" class="cmm-input" id="cmm-set-proxy-port" placeholder="1080" style="width:100%; box-sizing:border-box;" />
+              <label style="display:block; font-size:0.8rem; color:#aaa; margin-bottom:2px;" title="SOCKS5 Server Port">Port:</label>
+              <input type="text" class="cmm-input" id="cmm-set-proxy-port" placeholder="1080" style="width:100%; box-sizing:border-box;" title="SOCKS5 port number (default: 1080, Clash: 7890, V2Ray: 10808, etc.)" />
             </div>
           </div>
 
           <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
             <div>
-              <label style="display:block; font-size:0.8rem; color:#aaa; margin-bottom:2px;">Username (optional):</label>
-              <input type="text" class="cmm-input" id="cmm-set-proxy-user" placeholder="Username" style="width:100%; box-sizing:border-box;" />
+              <label style="display:block; font-size:0.8rem; color:#aaa; margin-bottom:2px;" title="Optional proxy username">Username (optional):</label>
+              <input type="text" class="cmm-input" id="cmm-set-proxy-user" placeholder="Username" style="width:100%; box-sizing:border-box;" title="Optional username for SOCKS5 proxy authentication" />
             </div>
             <div>
-              <label style="display:block; font-size:0.8rem; color:#aaa; margin-bottom:2px;">Password (optional):</label>
-              <input type="password" class="cmm-input" id="cmm-set-proxy-pass" placeholder="Password" style="width:100%; box-sizing:border-box;" />
+              <label style="display:block; font-size:0.8rem; color:#aaa; margin-bottom:2px;" title="Optional proxy password">Password (optional):</label>
+              <input type="password" class="cmm-input" id="cmm-set-proxy-pass" placeholder="Password" style="width:100%; box-sizing:border-box;" title="Optional password for SOCKS5 proxy authentication" />
             </div>
           </div>
 
-          <div style="display:flex; justify-content:space-between; align-items:center; background:#14141d; border:1px solid #282836; border-radius:6px; padding:10px 12px; margin-top:2px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; background:#14141d; border:1px solid #282836; border-radius:6px; padding:10px 12px; margin-top:2px;" title="Keep SOCKS5 TCP connection open across requests to speed up metadata lookups">
             <div>
-              <div style="font-size:0.86rem; font-weight:600; color:#e0e0e0;">Reuse Proxy Connection (Keep-Alive)</div>
+              <div style="font-size:0.86rem; font-weight:600; color:#e0e0e0; display:flex; align-items:center;">
+                Reuse Proxy Connection (Keep-Alive)
+                <span class="cmm-help-tip" title="Maintains persistent HTTP/SOCKS5 connection pools to drastically speed up batch metadata parsing and avoid repeated TLS/proxy handshakes.">?</span>
+              </div>
               <div style="font-size:0.75rem; color:#888;">Reuses persistent connection pool for metadata parsing & bulk URL scans to prevent connection overhead</div>
             </div>
-            <label class="cmm-switch">
-              <input type="checkbox" id="cmm-set-proxy-reuse" />
+            <label class="cmm-switch" title="Toggle persistent proxy connection pool">
+              <input type="checkbox" id="cmm-set-proxy-reuse" title="Toggle persistent proxy connection pool" />
               <span class="cmm-slider"></span>
             </label>
           </div>
 
           <div style="display:flex; justify-content:flex-end; margin-top:4px;">
-            <button class="cmm-btn" id="cmm-test-proxy-btn" style="font-size:0.82rem;">🧪 Test Proxy Connection</button>
+            <button class="cmm-btn" id="cmm-test-proxy-btn" style="font-size:0.82rem;" title="Test connection to the specified SOCKS5 proxy server">🧪 Test Proxy Connection</button>
           </div>
         </div>
       </div>
 
       <!-- Convert Video Previews to WebP Toggle Switch -->
-      <div style="background:#1a1a24; border:1px solid #2d2d3a; border-radius:8px; padding:14px; display:flex; flex-direction:column; gap:10px;">
+      <div style="background:#1a1a24; border:1px solid #2d2d3a; border-radius:8px; padding:14px; display:flex; flex-direction:column; gap:10px;" title="Convert downloaded/detected video previews into lightweight animated WebP images">
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <div>
-            <div style="font-weight:600; font-size:0.88rem; color:#fff;">Convert Video Previews to Animated WebP</div>
+            <div style="font-weight:600; font-size:0.88rem; color:#fff; display:flex; align-items:center;">
+              Convert Video Previews to Animated WebP
+              <span class="cmm-help-tip" title="Uses FFmpeg to convert MP4/WEBM model preview videos into animated WebP files (quality 85%, compression 2), significantly reducing disk space and speeding up gallery loading. Requires FFmpeg on PATH.">?</span>
+            </div>
             <div style="font-size:0.75rem; color:#888;">Uses FFmpeg to convert video previews to WebP (quality 85%, compression 2). Requires FFmpeg installed.</div>
           </div>
-          <label class="cmm-switch">
-            <input type="checkbox" id="cmm-set-convert-video-webp" />
+          <label class="cmm-switch" title="Toggle video preview conversion to animated WebP">
+            <input type="checkbox" id="cmm-set-convert-video-webp" title="Toggle video preview conversion to animated WebP" />
             <span class="cmm-slider"></span>
           </label>
         </div>
         <div style="display:flex; justify-content:flex-end;">
-          <button class="cmm-btn" id="cmm-check-ffmpeg-btn" style="font-size:0.82rem;">🔍 Check FFmpeg Installation</button>
+          <button class="cmm-btn" id="cmm-check-ffmpeg-btn" style="font-size:0.82rem;" title="Check if FFmpeg binary is installed and detected on system PATH">🔍 Check FFmpeg Installation</button>
         </div>
       </div>
 
       <div>
-        <label style="display:block; font-size:0.88rem; font-weight:600; margin-bottom:4px;">Max Concurrent Downloads:</label>
-        <input type="number" class="cmm-input" id="cmm-set-max-tasks" min="1" max="10" value="3" style="width:100%; box-sizing:border-box;" />
+        <label style="display:block; font-size:0.88rem; font-weight:600; margin-bottom:4px;" title="Number of simultaneous background downloads">
+          Max Concurrent Downloads:
+          <span class="cmm-help-tip" title="The maximum number of model download tasks that can run in parallel. Additional tasks will stay queued in the background and start automatically when slots become available.">?</span>
+        </label>
+        <input type="number" class="cmm-input" id="cmm-set-max-tasks" min="1" max="10" value="3" style="width:100%; box-sizing:border-box;" title="Set maximum concurrent downloads (1-10, default: 3)" />
       </div>
 
       <!-- Include Hidden Files Toggle Switch -->
-      <div style="display:flex; justify-content:space-between; align-items:center; background:#1a1a24; border:1px solid #2d2d3a; border-radius:8px; padding:12px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; background:#1a1a24; border:1px solid #2d2d3a; border-radius:8px; padding:12px;" title="Scan dotted folders and hidden files when discovering models">
         <div>
-          <div style="font-weight:600; font-size:0.88rem; color:#fff;">Include Hidden Files in Model Scanning</div>
+          <div style="font-weight:600; font-size:0.88rem; color:#fff; display:flex; align-items:center;">
+            Include Hidden Files in Model Scanning
+            <span class="cmm-help-tip" title="When enabled, model scanner will include hidden directories and files prefixed with a dot (e.g. .hidden, .models). Keep disabled to ignore system/cache directories.">?</span>
+          </div>
           <div style="font-size:0.78rem; color:#888;">Scan hidden folders and dotted files</div>
         </div>
-        <label class="cmm-switch">
-          <input type="checkbox" id="cmm-set-include-hidden" />
+        <label class="cmm-switch" title="Toggle scanning of hidden and dotted files">
+          <input type="checkbox" id="cmm-set-include-hidden" title="Toggle scanning of hidden and dotted files" />
           <span class="cmm-slider"></span>
         </label>
       </div>
 
       <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:8px;">
-        <button class="cmm-btn" id="cmm-settings-cancel-btn">Cancel</button>
-        <button class="cmm-btn cmm-btn-primary" id="cmm-settings-save-btn">💾 Save Settings</button>
+        <button class="cmm-btn" id="cmm-settings-cancel-btn" title="Discard unsaved changes and close settings">Cancel</button>
+        <button class="cmm-btn cmm-btn-primary" id="cmm-settings-save-btn" title="Save all settings and apply changes">💾 Save Settings</button>
       </div>
     </div>
   `;
