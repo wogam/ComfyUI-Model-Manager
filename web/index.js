@@ -33,6 +33,14 @@ function formatBytes(bytes, decimals = 2) {
 function formatDate(timestamp) {
   if (!timestamp) return "";
   let cleanStr = String(timestamp).trim().replace(/^['"]|['"]$/g, '');
+  let num = Number(cleanStr);
+  if (!isNaN(num) && num > 0) {
+    if (num < 10000000000) num *= 1000;
+    const d = new Date(num);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleDateString() + " " + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+  }
   const d = new Date(cleanStr);
   if (isNaN(d.getTime())) return cleanStr;
   return d.toLocaleDateString() + " " + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -61,10 +69,45 @@ function getNoPreviewHTML(text = "No Preview") {
   `;
 }
 
+function showToast(message, duration = 2200) {
+  const existing = document.querySelector(".cmm-toast");
+  if (existing) existing.remove();
+  const toast = document.createElement("div");
+  toast.className = "cmm-toast";
+  toast.innerHTML = `<span>✨</span> <span>${escapeHtml(message)}</span>`;
+  document.body.appendChild(toast);
+  setTimeout(() => {
+    toast.style.transition = "opacity 0.2s ease, transform 0.2s ease";
+    toast.style.opacity = "0";
+    toast.style.transform = "translateY(8px) scale(0.96)";
+    setTimeout(() => toast.remove(), 220);
+  }, duration);
+}
+
+async function copyToClipboard(text, successMsg = "Copied to clipboard!") {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      textarea.remove();
+    }
+    showToast(successMsg);
+  } catch (err) {
+    console.error("Failed to copy text:", err);
+  }
+}
+
 function createOverlay(extraClass = "") {
   const overlay = document.createElement("div");
-  const isSub = extraClass.includes("cmm-dialog-sub");
-  overlay.className = `cmm-dialog-overlay ${extraClass} ${isSub ? "cmm-sub-overlay" : ""}`;
+  const isSub = extraClass.includes("cmm-dialog-sub") || extraClass.includes("cmm-sub-overlay");
+  overlay.className = `cmm-dialog-overlay ${isSub ? "cmm-sub-overlay" : ""}`;
   overlay.onclick = (e) => {
     if (e.target === overlay && !isSub) {
       overlay.remove();
@@ -688,94 +731,144 @@ async function openModelDetailModal(model, onRefresh) {
   const overlay = createOverlay("cmm-dialog-sub");
   const dialog = document.createElement("div");
   dialog.className = "cmm-dialog";
-  dialog.style.maxWidth = "920px";
-  dialog.style.height = "82vh";
+  dialog.style.width = "1000px";
+  dialog.style.maxWidth = "95vw";
+  dialog.style.height = "84vh";
 
   const relativeFilename = model.subFolder ? `${model.subFolder}/${model.basename}${model.extension}` : `${model.basename}${model.extension}`;
 
   dialog.innerHTML = `
     <div class="cmm-header">
-      <div class="cmm-title">
-        <span>📄</span> ${model.basename}${model.extension}
+      <div class="cmm-title" style="display:flex; align-items:center; gap:8px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:70%;">
+        <span class="cmm-type-badge">${escapeHtml(model.type)}</span>
+        <span id="cmm-header-filename" title="Click to copy filename" style="cursor:pointer; color:#f8fafc; font-weight:600; overflow:hidden; text-overflow:ellipsis;" class="cmm-clickable-filename">${escapeHtml(model.basename + model.extension)}</span>
       </div>
       <div class="cmm-header-actions">
-        <button class="cmm-btn" id="cmm-single-scan-btn" title="Fetch preview & info for this model">🔍 Fetch Info</button>
-        <button class="cmm-btn cmm-btn-icon" id="cmm-detail-close">✕</button>
+        <button class="cmm-btn" id="cmm-single-scan-btn" title="Fetch preview & info from Civitai / HuggingFace">🔍 Fetch Info</button>
+        <button class="cmm-btn cmm-btn-icon" id="cmm-detail-close" title="Close">✕</button>
       </div>
     </div>
 
-    <div class="cmm-body" style="padding:20px;">
+    <div class="cmm-body" style="padding:18px;">
       <div class="cmm-detail-layout">
-        <!-- Left Side: Preview & Controls -->
+        <!-- Left Side: Preview & Structured Spec Sheet -->
         <div class="cmm-detail-left">
           <div class="cmm-preview-box" id="cmm-detail-preview">
             Loading preview...
           </div>
-          <div>
-            <label class="cmm-btn cmm-btn-primary" style="width:100%; justify-content:center; box-sizing:border-box;">
-              📷 Upload Custom Preview
-              <input type="file" id="cmm-preview-file-input" accept="image/*,video/*" style="display:none;" />
-            </label>
+          
+          <label class="cmm-btn" style="width:100%; justify-content:center; box-sizing:border-box; cursor:pointer;">
+            📷 Upload Preview
+            <input type="file" id="cmm-preview-file-input" accept="image/*,video/*" style="display:none;" />
+          </label>
+
+          <!-- Specifications Card -->
+          <div class="cmm-specs-card">
+            <div class="cmm-spec-row">
+              <span class="cmm-spec-label">Category</span>
+              <span class="cmm-spec-value"><span class="cmm-type-badge">${escapeHtml(model.type)}</span></span>
+            </div>
+            <div class="cmm-spec-row">
+              <span class="cmm-spec-label">File Size</span>
+              <span class="cmm-spec-value">${formatBytes(model.sizeBytes)}</span>
+            </div>
+            <div class="cmm-spec-row">
+              <span class="cmm-spec-label">Extension</span>
+              <span class="cmm-spec-value" style="font-family:monospace; color:#94a3b8;">${escapeHtml(model.extension)}</span>
+            </div>
+            <div class="cmm-spec-row">
+              <span class="cmm-spec-label">Subfolder</span>
+              <span class="cmm-spec-value" style="font-family:monospace; font-size:0.78rem; color:#93c5fd;">${escapeHtml(model.subFolder || "(root)")}</span>
+            </div>
+            <div class="cmm-spec-row">
+              <span class="cmm-spec-label">Modified</span>
+              <span class="cmm-spec-value" style="font-size:0.78rem;">${formatDate(model.updatedAt || model.createdAt)}</span>
+            </div>
+            <div class="cmm-spec-row" id="cmm-detail-published-row" style="display:none;">
+              <span class="cmm-spec-label">Published</span>
+              <span class="cmm-spec-value" id="cmm-detail-published-val" style="font-size:0.78rem;"></span>
+            </div>
+            <div class="cmm-spec-row" id="cmm-detail-modelpage-row" style="display:none;">
+              <span class="cmm-spec-label">Source Page</span>
+              <span class="cmm-spec-value">
+                <a id="cmm-detail-modelpage-link" href="#" target="_blank" rel="noopener noreferrer" style="color:#60a5fa; font-weight:600; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
+                  Open ↗
+                </a>
+              </span>
+            </div>
           </div>
-          <div style="font-size:0.8rem; color:#888; display:flex; flex-direction:column; gap:4px;">
-            <div><strong>Type:</strong> ${model.type}</div>
-            <div><strong>Subfolder:</strong> ${model.subFolder || "(root)"}</div>
-            <div><strong>Size:</strong> ${formatBytes(model.sizeBytes)}</div>
-            <div><strong>Created:</strong> ${formatDate(model.createdAt)}</div>
-            <div><strong>Updated:</strong> ${formatDate(model.updatedAt)}</div>
-            <div id="cmm-detail-published-row" style="display:none;"><strong>Published:</strong> <span id="cmm-detail-published-val"></span></div>
-            <div id="cmm-detail-modelpage-row" style="display:none;"><strong>Model Page:</strong> <a id="cmm-detail-modelpage-link" href="#" target="_blank" rel="noopener noreferrer" style="color:#60a5fa; font-weight:600; text-decoration:none;">Link ↗</a></div>
+
+          <!-- Quick Copy Actions -->
+          <div class="cmm-quick-actions-row">
+            <button class="cmm-btn" id="cmm-copy-filename-btn" style="font-size:0.78rem; justify-content:center;">
+              📋 Filename
+            </button>
+            <button class="cmm-btn" id="cmm-copy-relpath-btn" style="font-size:0.78rem; justify-content:center;">
+              📁 Rel Path
+            </button>
           </div>
         </div>
 
-        <!-- Right Side: Compact Icon Tabs -->
-        <div style="display:flex; flex-direction:column; overflow:hidden; height:100%;">
-          <div class="cmm-tabs">
-            <div class="cmm-tab active" data-tab="desc" title="Description"><span class="cmm-tab-icon">📝</span><span class="cmm-tab-label"> Description</span></div>
-            <div class="cmm-tab" data-tab="info" title="Model Info"><span class="cmm-tab-icon">ℹ️</span><span class="cmm-tab-label" style="display:none;"> Model Info</span></div>
-            <div class="cmm-tab" data-tab="meta" title="Raw Safetensors Metadata"><span class="cmm-tab-icon">🔬</span><span class="cmm-tab-label" style="display:none;"> Metadata</span></div>
-            <div class="cmm-tab" data-tab="rename" title="Rename / Move Model"><span class="cmm-tab-icon">🏷️</span><span class="cmm-tab-label" style="display:none;"> Rename / Move</span></div>
-            <div class="cmm-tab" data-tab="danger" title="Delete Model"><span class="cmm-tab-icon">🗑️</span><span class="cmm-tab-label" style="display:none;"> Delete</span></div>
+        <!-- Right Side: Unified Tab Toolbar & Workbench -->
+        <div class="cmm-detail-right">
+          <div class="cmm-tab-toolbar">
+            <div class="cmm-tabs">
+              <button class="cmm-tab active" data-tab="desc">📝 Description</button>
+              <button class="cmm-tab" data-tab="info">ℹ️ Model Info</button>
+              <button class="cmm-tab" data-tab="rename">🏷️ Rename & Move</button>
+              <button class="cmm-tab" data-tab="danger">🗑️ Delete</button>
+            </div>
+
+            <!-- Description Actions (Visible on Desc tab) -->
+            <div id="cmm-desc-actions" class="cmm-tab-actions">
+              <button class="cmm-tab-action-btn" id="cmm-toggle-edit-desc-btn" title="Edit markdown description">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                <span>Edit</span>
+              </button>
+              <button class="cmm-tab-action-btn" id="cmm-cancel-desc-btn" style="display:none;" title="Cancel editing">✕ Cancel</button>
+              <button class="cmm-tab-action-btn cmm-tab-action-primary" id="cmm-save-desc-btn" style="display:none;" title="Save changes">💾 Save</button>
+            </div>
           </div>
 
-          <div style="flex:1; overflow-y:auto; display:flex; flex-direction:column;" id="cmm-tab-content">
+          <div style="flex:1; overflow-y:auto; display:flex; flex-direction:column; min-height:0;" id="cmm-tab-content">
             <!-- Desc Tab -->
-            <div id="cmm-tab-desc" style="display:flex; flex-direction:column; gap:10px; flex:1; height:100%;">
-              <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #2d2d3a; padding-bottom:8px;">
-                <span style="font-size:0.82rem; color:#888; font-weight:600;" id="cmm-desc-mode-indicator">Markdown View</span>
-                <div style="display:flex; gap:8px;">
-                  <button class="cmm-btn" id="cmm-toggle-edit-desc-btn">✏️ Edit</button>
-                  <button class="cmm-btn" id="cmm-cancel-desc-btn" style="display:none;">✕ Cancel</button>
-                  <button class="cmm-btn cmm-btn-primary" id="cmm-save-desc-btn" style="display:none;">💾 Save</button>
-                </div>
+            <div id="cmm-tab-desc" style="display:flex; flex-direction:column; gap:10px; flex:1; height:100%; min-height:0;">
+              <!-- Trigger Words Banner (Shown if available) -->
+              <div id="cmm-trigger-banner" class="cmm-trigger-banner" style="display:none;">
+                <span class="cmm-trigger-label">🏷️ Trigger Words:</span>
+                <div id="cmm-trigger-chips-wrap" class="cmm-trigger-chips-wrap"></div>
+                <button class="cmm-btn" id="cmm-copy-all-triggers-btn" style="padding:2px 8px; font-size:0.72rem; flex-shrink:0;">Copy All</button>
               </div>
 
               <!-- Rendered Markdown View -->
-              <div id="cmm-desc-markdown-view" style="flex:1; overflow-y:auto; padding:14px; background:#14141d; border:1px solid #2d2d3a; border-radius:8px; box-sizing:border-box;"></div>
+              <div id="cmm-desc-markdown-view" style="flex:1; overflow-y:auto; padding:16px; background:#14141d; border:1px solid rgba(255,255,255,0.07); border-radius:8px; box-sizing:border-box;"></div>
 
               <!-- Raw Text Editor -->
-              <textarea class="cmm-input" id="cmm-desc-text" style="flex:1; width:100%; font-family:monospace; resize:none; display:none; box-sizing:border-box;" placeholder="Enter markdown description..."></textarea>
+              <textarea class="cmm-input" id="cmm-desc-text" style="flex:1; width:100%; font-family:monospace; resize:none; display:none; box-sizing:border-box; line-height:1.5; padding:14px; background:#14141d; border:1px solid rgba(255,255,255,0.07); border-radius:8px;" placeholder="Enter markdown description..."></textarea>
             </div>
 
             <!-- Model Info Tab -->
-            <div id="cmm-tab-info" style="display:none;">
+            <div id="cmm-tab-info" style="display:none; flex-direction:column; gap:14px;">
               <div id="cmm-info-table-container">No model info available.</div>
-            </div>
-
-            <!-- Meta Tab -->
-            <div id="cmm-tab-meta" style="display:none;">
-              <div id="cmm-meta-table-container">Loading metadata...</div>
             </div>
 
             <!-- Rename Tab -->
             <div id="cmm-tab-rename" style="display:none; flex-direction:column; gap:16px;">
+              <div class="cmm-path-preview">
+                <div class="cmm-path-preview-label">Live Path Preview</div>
+                <div style="display:flex; flex-direction:column; gap:4px;">
+                  <div style="color:#94a3b8; font-size:0.78rem;">Current: <span style="font-family:monospace; color:#cbd5e1;">${escapeHtml(relativeFilename)}</span></div>
+                  <div style="color:#94a3b8; font-size:0.78rem;">Target: <span class="cmm-path-preview-val" id="cmm-rename-live-target">${escapeHtml(relativeFilename)}</span></div>
+                </div>
+              </div>
+
               <div>
-                <label style="display:block; font-size:0.88rem; font-weight:600; margin-bottom:4px;">Subfolder Path:</label>
-                <input type="text" class="cmm-input" id="cmm-rename-subfolder" value="${model.subFolder || ''}" style="width:100%; box-sizing:border-box;" placeholder="e.g. SDXL/Base" />
+                <label style="display:block; font-size:0.84rem; font-weight:600; color:#e2e8f0; margin-bottom:6px;">Subfolder Path:</label>
+                <input type="text" class="cmm-input" id="cmm-rename-subfolder" value="${escapeHtml(model.subFolder || '')}" style="width:100%; box-sizing:border-box;" placeholder="e.g. SDXL/Base (leave empty for root)" />
               </div>
               <div>
-                <label style="display:block; font-size:0.88rem; font-weight:600; margin-bottom:4px;">Basename (without extension):</label>
-                <input type="text" class="cmm-input" id="cmm-rename-basename" value="${model.basename}" style="width:100%; box-sizing:border-box;" />
+                <label style="display:block; font-size:0.84rem; font-weight:600; color:#e2e8f0; margin-bottom:6px;">Basename (without extension):</label>
+                <input type="text" class="cmm-input" id="cmm-rename-basename" value="${escapeHtml(model.basename)}" style="width:100%; box-sizing:border-box;" />
               </div>
               <div>
                 <button class="cmm-btn cmm-btn-primary" id="cmm-rename-btn">🏷️ Rename / Move Model</button>
@@ -783,9 +876,17 @@ async function openModelDetailModal(model, onRefresh) {
             </div>
 
             <!-- Danger Tab -->
-            <div id="cmm-tab-danger" style="display:none; padding:20px; text-align:center;">
-              <p style="color:#ef4444; font-weight:600; margin-bottom:16px;">⚠️ Are you sure you want to permanently delete this model and its associated metadata & previews?</p>
-              <button class="cmm-btn cmm-btn-danger" id="cmm-delete-btn" style="padding:10px 24px;">🗑️ Permanently Delete Model</button>
+            <div id="cmm-tab-danger" style="display:none; padding:10px;">
+              <div class="cmm-danger-zone">
+                <div style="font-size:2rem;">⚠️</div>
+                <div>
+                  <h4 style="margin:0 0 6px 0; color:#f87171;">Delete Model File & Artifacts</h4>
+                  <p style="margin:0; font-size:0.84rem; color:#94a3b8; line-height:1.5;">
+                    This will permanently delete <code style="color:#fca5a5; background:rgba(239,68,68,0.12); padding:2px 6px; border-radius:4px;">${escapeHtml(relativeFilename)}</code> along with its preview images and metadata files from your disk.
+                  </p>
+                </div>
+                <button class="cmm-btn cmm-btn-danger" id="cmm-delete-btn" style="padding:9px 20px;">🗑️ Permanently Delete Model</button>
+              </div>
             </div>
           </div>
         </div>
@@ -800,6 +901,11 @@ async function openModelDetailModal(model, onRefresh) {
 
   dialog.querySelector("#cmm-detail-close").onclick = () => overlay.remove();
 
+  // Quick Copy Filename & Path
+  dialog.querySelector("#cmm-header-filename").onclick = () => copyToClipboard(model.basename + model.extension, "Filename copied!");
+  dialog.querySelector("#cmm-copy-filename-btn").onclick = () => copyToClipboard(model.basename + model.extension, "Filename copied!");
+  dialog.querySelector("#cmm-copy-relpath-btn").onclick = () => copyToClipboard(relativeFilename, "Relative path copied!");
+
   // Render Preview
   function renderPreview(previewSrc) {
     const previewBox = dialog.querySelector("#cmm-detail-preview");
@@ -808,7 +914,7 @@ async function openModelDetailModal(model, onRefresh) {
       if (["mp4", "webm", "mov"].includes(ext)) {
         previewBox.innerHTML = `<video src="${previewSrc}" controls autoplay loop style="width:100%; height:100%; object-fit:cover; border-radius:6px;" onerror="this.onerror=null; this.parentElement.innerHTML=getNoPreviewHTML();"></video>`;
       } else {
-        previewBox.innerHTML = `<img src="${previewSrc}" style="width:100%; max-height:380px; object-fit:cover; border-radius:6px;" alt="Preview" onerror="this.onerror=null; this.parentElement.innerHTML=getNoPreviewHTML();" />`;
+        previewBox.innerHTML = `<img src="${previewSrc}" style="width:100%; max-height:340px; object-fit:cover; border-radius:6px;" alt="Preview" onerror="this.onerror=null; this.parentElement.innerHTML=getNoPreviewHTML();" />`;
       }
     } else {
       previewBox.innerHTML = getNoPreviewHTML();
@@ -827,7 +933,7 @@ async function openModelDetailModal(model, onRefresh) {
         method: "POST",
       });
       if (res.success && res.data) {
-        alert("Model metadata & preview fetched successfully!");
+        showToast("Metadata & preview fetched!");
         if (res.data.description) {
           updateDescDisplay(res.data.description);
         }
@@ -846,7 +952,7 @@ async function openModelDetailModal(model, onRefresh) {
   // Description Editor & Frontmatter handling
   const descMarkdownView = dialog.querySelector("#cmm-desc-markdown-view");
   const descTextarea = dialog.querySelector("#cmm-desc-text");
-  const descModeIndicator = dialog.querySelector("#cmm-desc-mode-indicator");
+  const descActions = dialog.querySelector("#cmm-desc-actions");
   const toggleEditBtn = dialog.querySelector("#cmm-toggle-edit-desc-btn");
   const cancelDescBtn = dialog.querySelector("#cmm-cancel-desc-btn");
   const saveDescBtn = dialog.querySelector("#cmm-save-desc-btn");
@@ -856,6 +962,40 @@ async function openModelDetailModal(model, onRefresh) {
   let currentFrontmatterInfo = {};
   let isEditingDesc = false;
 
+  // Extract Trigger Words helper
+  function updateTriggerWordsBanner(info) {
+    const banner = dialog.querySelector("#cmm-trigger-banner");
+    const chipsWrap = dialog.querySelector("#cmm-trigger-chips-wrap");
+    const copyAllBtn = dialog.querySelector("#cmm-copy-all-triggers-btn");
+
+    let triggers = [];
+    if (info) {
+      const rawTriggers = info.trainedWords || info.triggerWords || info.triggers || info["Trained Words"] || info["Trigger Words"];
+      if (Array.isArray(rawTriggers)) {
+        triggers = rawTriggers.map(t => String(t).trim()).filter(Boolean);
+      } else if (typeof rawTriggers === "string" && rawTriggers.trim()) {
+        triggers = rawTriggers.split(",").map(t => t.trim()).filter(Boolean);
+      }
+    }
+
+    if (triggers.length > 0) {
+      chipsWrap.innerHTML = "";
+      triggers.forEach(word => {
+        const chip = document.createElement("button");
+        chip.className = "cmm-trigger-chip";
+        chip.title = `Click to copy "${word}"`;
+        chip.textContent = word;
+        chip.onclick = () => copyToClipboard(word, `Copied "${word}"!`);
+        chipsWrap.appendChild(chip);
+      });
+
+      copyAllBtn.onclick = () => copyToClipboard(triggers.join(", "), "Copied all trigger words!");
+      banner.style.display = "flex";
+    } else {
+      banner.style.display = "none";
+    }
+  }
+
   function renderModelInfoTable(info) {
     const container = dialog.querySelector("#cmm-info-table-container");
     const pubRow = dialog.querySelector("#cmm-detail-published-row");
@@ -864,7 +1004,7 @@ async function openModelDetailModal(model, onRefresh) {
     const modelPageLink = dialog.querySelector("#cmm-detail-modelpage-link");
 
     if (!info || Object.keys(info).length === 0) {
-      container.innerHTML = `<div style="color:#888; padding:10px;">No additional model info available.</div>`;
+      container.innerHTML = `<div style="color:#888; padding:16px; text-align:center; background:#14141d; border-radius:8px; border:1px solid rgba(255,255,255,0.07);">No additional model info available.</div>`;
       pubRow.style.display = "none";
       modelPageRow.style.display = "none";
       return;
@@ -874,7 +1014,7 @@ async function openModelDetailModal(model, onRefresh) {
     const published = info.publishedAt || info.published_at || info.createdAt;
     if (published) {
       pubVal.textContent = formatDate(published);
-      pubRow.style.display = "block";
+      pubRow.style.display = "flex";
     } else {
       pubRow.style.display = "none";
     }
@@ -885,48 +1025,55 @@ async function openModelDetailModal(model, onRefresh) {
         mPage = mPage.replace(/civitai\.(com|green)/gi, "civitai.red");
       }
       modelPageLink.href = mPage;
-      modelPageRow.style.display = "block";
+      modelPageRow.style.display = "flex";
     } else {
       modelPageRow.style.display = "none";
     }
 
-    // Build Structured Table for Model Info Tab
+    // Structured Cards / Table for Model Info Tab
     let rows = "";
     for (const [k, v] of Object.entries(info)) {
-      if (k === "preview") continue; // Skip preview list in table
+      if (k === "preview") continue;
 
       let label = k.replace(/([A-Z])/g, " $1").replace(/^./, str => str.toUpperCase());
-      let valStr = "";
+      let valHtml = "";
 
       if (k === "modelPage" && v) {
         let linkUrl = v;
         if (typeof linkUrl === "string" && /civitai\.(com|green)/i.test(linkUrl)) {
           linkUrl = linkUrl.replace(/civitai\.(com|green)/gi, "civitai.red");
         }
-        valStr = `<a href="${linkUrl}" target="_blank" rel="noopener noreferrer" style="color:#60a5fa; font-weight:600; text-decoration:underline;">${linkUrl} ↗</a>`;
-      } else if ((k === "publishedAt" || k === "createdAt") && v) {
-        valStr = formatDate(v);
+        valHtml = `<a href="${linkUrl}" target="_blank" rel="noopener noreferrer" style="color:#60a5fa; font-weight:600; text-decoration:underline;">${escapeHtml(linkUrl)} ↗</a>`;
+      } else if ((k === "publishedAt" || k === "createdAt" || k === "updatedAt") && v) {
+        valHtml = `<span style="font-variant-numeric:tabular-nums;">${escapeHtml(formatDate(v))}</span>`;
+      } else if ((k === "trainedWords" || k === "triggerWords") && v) {
+        const words = Array.isArray(v) ? v : String(v).split(",");
+        valHtml = `<div style="display:flex; flex-wrap:wrap; gap:4px;">${words.map(w => `<span class="cmm-trigger-chip" style="font-size:0.75rem;" onclick="navigator.clipboard.writeText('${escapeHtml(String(w).trim())}')">${escapeHtml(String(w).trim())}</span>`).join("")}</div>`;
       } else if (typeof v === "object" && v !== null) {
         if (Array.isArray(v)) {
-          valStr = v.join(", ");
+          valHtml = `<div style="display:flex; flex-wrap:wrap; gap:4px;">${v.map(item => `<span class="cmm-badge" style="background:#1e2230; color:#93c5fd;">${escapeHtml(String(item))}</span>`).join("")}</div>`;
         } else {
           let subRows = "";
           for (const [sk, sv] of Object.entries(v)) {
-            subRows += `<div><span style="color:#aaa;">${sk}:</span> <code style="color:#93c5fd;">${sv}</code></div>`;
+            subRows += `<div style="padding:2px 0;"><span style="color:#888;">${escapeHtml(sk)}:</span> <code style="color:#93c5fd; background:rgba(0,0,0,0.25); padding:1px 4px; border-radius:3px;">${escapeHtml(String(sv))}</code></div>`;
           }
-          valStr = subRows;
+          valHtml = subRows;
         }
       } else {
-        valStr = String(v);
+        valHtml = escapeHtml(String(v));
       }
 
       rows += `<tr>
-        <td style="padding:8px 12px; font-weight:600; border-bottom:1px solid #2d2d3a; color:#93c5fd; font-size:0.85rem; width:180px;">${label}</td>
-        <td style="padding:8px 12px; border-bottom:1px solid #2d2d3a; font-size:0.85rem; word-break:break-all;">${valStr}</td>
+        <td class="cmm-info-key-cell">${escapeHtml(label)}</td>
+        <td class="cmm-info-val-cell">${valHtml}</td>
       </tr>`;
     }
 
-    container.innerHTML = `<table style="width:100%; border-collapse:collapse; background:#14141d; border:1px solid #2d2d3a; border-radius:8px; overflow:hidden;">${rows}</table>`;
+    container.innerHTML = `
+      <div class="cmm-info-card">
+        <table class="cmm-info-table">${rows}</table>
+      </div>
+    `;
   }
 
   function updateDescDisplay(rawDesc) {
@@ -937,6 +1084,7 @@ async function openModelDetailModal(model, onRefresh) {
 
     descTextarea.value = currentCleanDescription;
     descMarkdownView.innerHTML = parseMarkdown(currentCleanDescription);
+    updateTriggerWordsBanner(currentFrontmatterInfo);
     renderModelInfoTable(currentFrontmatterInfo);
   }
 
@@ -945,7 +1093,6 @@ async function openModelDetailModal(model, onRefresh) {
     if (isEditingDesc) {
       descMarkdownView.style.display = "none";
       descTextarea.style.display = "block";
-      descModeIndicator.textContent = "Raw Text Mode";
       toggleEditBtn.style.display = "none";
       cancelDescBtn.style.display = "inline-flex";
       saveDescBtn.style.display = "inline-flex";
@@ -953,7 +1100,6 @@ async function openModelDetailModal(model, onRefresh) {
       descMarkdownView.innerHTML = parseMarkdown(descTextarea.value);
       descMarkdownView.style.display = "block";
       descTextarea.style.display = "none";
-      descModeIndicator.textContent = "Markdown View";
       toggleEditBtn.style.display = "inline-flex";
       toggleEditBtn.textContent = "✏️ Edit";
       cancelDescBtn.style.display = "none";
@@ -961,10 +1107,7 @@ async function openModelDetailModal(model, onRefresh) {
     }
   }
 
-  toggleEditBtn.onclick = () => {
-    setEditMode(true);
-  };
-
+  toggleEditBtn.onclick = () => setEditMode(true);
   cancelDescBtn.onclick = () => {
     descTextarea.value = currentCleanDescription;
     setEditMode(false);
@@ -982,7 +1125,7 @@ async function openModelDetailModal(model, onRefresh) {
       });
       if (res.success) {
         updateDescDisplay(desc);
-        alert("Description saved successfully!");
+        showToast("Description saved successfully!");
         setEditMode(false);
       } else {
         alert("Failed to save description: " + res.error);
@@ -992,52 +1135,51 @@ async function openModelDetailModal(model, onRefresh) {
     }
   };
 
-  // Handle Compact Icon Tab Switch
-  const tabs = dialog.querySelectorAll(".cmm-tab");
-  tabs.forEach(tab => {
+  // Tab Switching
+  const tabBtns = dialog.querySelectorAll(".cmm-tab");
+  tabBtns.forEach(tab => {
     tab.onclick = () => {
-      tabs.forEach(t => {
-        t.classList.remove("active");
-        const label = t.querySelector(".cmm-tab-label");
-        if (label) label.style.display = "none";
-      });
+      tabBtns.forEach(t => t.classList.remove("active"));
       tab.classList.add("active");
-      const activeLabel = tab.querySelector(".cmm-tab-label");
-      if (activeLabel) activeLabel.style.display = "inline";
 
       const target = tab.getAttribute("data-tab");
-      ["desc", "info", "meta", "rename", "danger"].forEach(tName => {
+      ["desc", "info", "rename", "danger"].forEach(tName => {
         const el = dialog.querySelector(`#cmm-tab-${tName}`);
-        if (el) el.style.display = tName === target ? (tName === "desc" ? "flex" : "block") : "none";
+        if (el) el.style.display = tName === target ? (tName === "desc" || tName === "rename" || tName === "info" ? "flex" : "block") : "none";
       });
+
+      // Show desc actions only on desc tab
+      if (descActions) {
+        descActions.style.display = target === "desc" ? "flex" : "none";
+      }
     };
   });
 
-  // Fetch Full Info (Metadata & Description)
+  // Fetch Full Info (Description & Info)
   try {
     const infoRes = await apiFetch(`/model-manager/model/${model.type}/${model.pathIndex}/${encodeURIComponent(relativeFilename)}`);
     if (infoRes.success && infoRes.data) {
-      const { description, metadata } = infoRes.data;
+      const { description } = infoRes.data;
       updateDescDisplay(description);
-      
-      const metaContainer = dialog.querySelector("#cmm-meta-table-container");
-      if (metadata && Object.keys(metadata).length > 0) {
-        let rows = "";
-        for (const [k, v] of Object.entries(metadata)) {
-          const valStr = typeof v === "object" ? JSON.stringify(v, null, 2) : String(v);
-          rows += `<tr>
-            <td style="padding:6px 10px; font-weight:600; border-bottom:1px solid #333; color:#93c5fd; font-size:0.85rem;">${k}</td>
-            <td style="padding:6px 10px; border-bottom:1px solid #333; font-family:monospace; font-size:0.8rem; word-break:break-all;">${valStr}</td>
-          </tr>`;
-        }
-        metaContainer.innerHTML = `<table style="width:100%; border-collapse:collapse;">${rows}</table>`;
-      } else {
-        metaContainer.innerHTML = `<div style="color:#888;">No safetensors metadata found.</div>`;
-      }
     }
   } catch (err) {
     console.error(err);
   }
+
+  // Live Path Rename Preview
+  const renameSubfolderInput = dialog.querySelector("#cmm-rename-subfolder");
+  const renameBasenameInput = dialog.querySelector("#cmm-rename-basename");
+  const liveTargetSpan = dialog.querySelector("#cmm-rename-live-target");
+
+  function updateLivePathPreview() {
+    const sub = renameSubfolderInput.value.trim();
+    const base = renameBasenameInput.value.trim() || model.basename;
+    const target = sub ? `${sub}/${base}${model.extension}` : `${base}${model.extension}`;
+    liveTargetSpan.textContent = target;
+  }
+
+  renameSubfolderInput.oninput = updateLivePathPreview;
+  renameBasenameInput.oninput = updateLivePathPreview;
 
   // Upload Preview File
   const fileInput = dialog.querySelector("#cmm-preview-file-input");
@@ -1053,7 +1195,7 @@ async function openModelDetailModal(model, onRefresh) {
         body: formData,
       });
       if (res.success) {
-        alert("Preview updated successfully!");
+        showToast("Preview updated successfully!");
         overlay.remove();
         if (onRefresh) onRefresh();
       } else {
@@ -1066,8 +1208,8 @@ async function openModelDetailModal(model, onRefresh) {
 
   // Rename Model
   dialog.querySelector("#cmm-rename-btn").onclick = async () => {
-    const newSubfolder = dialog.querySelector("#cmm-rename-subfolder").value.trim();
-    const newBasename = dialog.querySelector("#cmm-rename-basename").value.trim();
+    const newSubfolder = renameSubfolderInput.value.trim();
+    const newBasename = renameBasenameInput.value.trim();
     if (!newBasename) {
       alert("Basename cannot be empty.");
       return;
@@ -1085,7 +1227,7 @@ async function openModelDetailModal(model, onRefresh) {
         body: formData,
       });
       if (res.success) {
-        alert("Model renamed successfully!");
+        showToast("Model renamed successfully!");
         overlay.remove();
         if (onRefresh) onRefresh();
       } else {
@@ -1098,14 +1240,14 @@ async function openModelDetailModal(model, onRefresh) {
 
   // Delete Model
   dialog.querySelector("#cmm-delete-btn").onclick = async () => {
-    if (!confirm(`Delete ${model.basename}${model.extension}?`)) return;
+    if (!confirm(`Permanently delete ${model.basename}${model.extension} and its preview/metadata?`)) return;
 
     try {
       const res = await apiFetch(`/model-manager/model/${model.type}/${model.pathIndex}/${encodeURIComponent(relativeFilename)}`, {
         method: "DELETE",
       });
       if (res.success) {
-        alert("Model deleted!");
+        showToast("Model deleted!");
         overlay.remove();
         if (onRefresh) onRefresh();
       } else {
