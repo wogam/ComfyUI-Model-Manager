@@ -635,7 +635,7 @@ class ModelDownload:
             await utils.send_json("update_download_task", task_content.to_dict())
 
         with open(download_tmp_file, "ab") as f:
-            for chunk in response.iter_content(chunk_size=8192):
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
                 if task_status.status == "pause":
                     break
 
