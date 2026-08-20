@@ -298,12 +298,106 @@ class HuggingfaceModelSearcher(ModelSearcher):
         model_id = f"{space}/{name}"
         rest_pathname = "/".join(rest_paths)
 
+        hf_api_key = (utils.get_api_key(request, "huggingface") or "") if request else ""
+        headers = {"User-Agent": config.user_agent}
+        if hf_api_key:
+            headers["Authorization"] = f"Bearer {hf_api_key}"
+
         session = utils.create_request_session(request, platform="huggingface", traffic_type="api")
-        response = session.get(f"https://huggingface.co/api/models/{model_id}", timeout=15)
+        response = session.get(f"https://huggingface.co/api/models/{model_id}", headers=headers, timeout=15)
         response.raise_for_status()
         res_data: dict = response.json()
 
-        sibling_files: list[str] = [x.get("rfilename") for x in res_data.get("siblings", [])]
+        # Fetch README.md model card
+        readme_text = ""
+        try:
+            readme_resp = session.get(f"https://huggingface.co/{model_id}/raw/main/README.md", headers=headers, timeout=10)
+            if readme_resp.status_code == 200:
+                readme_text = readme_resp.text
+        except Exception as e:
+            utils.print_debug(f"Could not fetch README.md for {model_id}: {e}")
+
+        # Parse YAML frontmatter and markdown body from README.md
+        frontmatter_dict = {}
+        body_markdown = ""
+        if readme_text:
+            fm_match = re.match(r"^---\s*\r?\n(.*?)\r?\n---\s*\r?\n(.*)$", readme_text, re.DOTALL)
+            if fm_match:
+                try:
+                    loaded_fm = yaml.safe_load(fm_match.group(1))
+                    if isinstance(loaded_fm, dict):
+                        frontmatter_dict = loaded_fm
+                except Exception:
+                    pass
+                body_markdown = fm_match.group(2).strip()
+            else:
+                body_markdown = readme_text.strip()
+
+        card_data = res_data.get("cardData") or {}
+        if isinstance(card_data, dict):
+            for k, v in card_data.items():
+                if k not in frontmatter_dict and v is not None:
+                    frontmatter_dict[k] = v
+
+        tags: list[str] = res_data.get("tags", [])
+        if "tags" in frontmatter_dict and isinstance(frontmatter_dict["tags"], list):
+            for t in frontmatter_dict["tags"]:
+                if str(t) not in tags:
+                    tags.append(str(t))
+
+        pipeline_tag = res_data.get("pipeline_tag", "") or frontmatter_dict.get("pipeline_tag", "")
+        base_model_raw = frontmatter_dict.get("base_model") or card_data.get("base_model")
+        base_model = ""
+        if isinstance(base_model_raw, list):
+            base_model = str(base_model_raw[0]) if len(base_model_raw) > 0 else ""
+        elif isinstance(base_model_raw, dict):
+            base_model = str(base_model_raw.get("name") or base_model_raw.get("id") or "")
+        elif base_model_raw is not None:
+            base_model = str(base_model_raw)
+        base_model = base_model.strip().strip("[]'\"` ")
+
+        # Extract trigger words, gallery media, and widgets
+        trigger_words = []
+        if "instance_prompt" in frontmatter_dict:
+            ip = frontmatter_dict["instance_prompt"]
+            if isinstance(ip, list):
+                trigger_words.extend([str(x) for x in ip if str(x).strip()])
+            elif isinstance(ip, str) and ip.strip():
+                trigger_words.append(ip.strip())
+
+        # Extract gallery media from widget / cardData
+        widget_data = frontmatter_dict.get("widget") or card_data.get("widget") or []
+        gallery_media: list[dict] = []
+        if isinstance(widget_data, list):
+            for w in widget_data:
+                if isinstance(w, dict):
+                    t_text = str(w.get("text", "")).strip()
+                    if t_text and t_text not in trigger_words and len(t_text) < 100:
+                        trigger_words.append(t_text)
+
+                    # Extract output media (video/image)
+                    media_url = ""
+                    out_field = w.get("output")
+                    if isinstance(out_field, dict):
+                        media_url = out_field.get("url") or out_field.get("src") or out_field.get("file") or ""
+                    elif isinstance(out_field, str):
+                        media_url = out_field
+                    if not media_url:
+                        media_url = w.get("url") or w.get("src") or w.get("file") or ""
+
+                    if media_url:
+                        if not (media_url.startswith("http://") or media_url.startswith("https://")):
+                            clean_rel = media_url.lstrip("./")
+                            full_media_url = f"https://huggingface.co/{model_id}/resolve/main/{clean_rel}"
+                        else:
+                            full_media_url = media_url
+                        gallery_media.append({
+                            "url": full_media_url,
+                            "text": t_text,
+                        })
+
+        sibling_entries: list[dict] = res_data.get("siblings", [])
+        sibling_files: list[str] = [x.get("rfilename") for x in sibling_entries if isinstance(x, dict) and "rfilename" in x]
 
         model_files = utils.filter_with(
             utils.filter_with(sibling_files, self._match_model_files()),
@@ -311,24 +405,71 @@ class HuggingfaceModelSearcher(ModelSearcher):
         )
 
         image_files = utils.filter_with(
-            utils.filter_with(sibling_files, self._match_image_files()),
+            utils.filter_with(sibling_files, self._match_preview_files()),
             self._match_tree_files(rest_pathname),
         )
         image_files = [f"https://huggingface.co/{model_id}/resolve/main/{filename}" for filename in image_files]
 
+        # Prioritize gallery media URLs in preview list
+        for gm in reversed(gallery_media):
+            if gm["url"] not in image_files:
+                image_files.insert(0, gm["url"])
+
+        # Extract any markdown preview images/videos from README body
+        if body_markdown:
+            md_imgs = re.findall(r'!\[.*?\]\((https?://[^\s\)]+|\./[^\s\)]+|[a-zA-Z0-9_\-\./]+\.(?:png|jpg|jpeg|webp|gif|mp4|webm))\)', body_markdown, re.IGNORECASE)
+            for img in md_imgs:
+                if img.startswith("http://") or img.startswith("https://"):
+                    if img not in image_files:
+                        image_files.append(img)
+                else:
+                    clean_rel = img.lstrip("./")
+                    full_img = f"https://huggingface.co/{model_id}/resolve/main/{clean_rel}"
+                    if full_img not in image_files:
+                        image_files.append(full_img)
+
+        # Expand or remove <Gallery /> tags in body_markdown
+        if body_markdown:
+            if gallery_media:
+                gallery_lines = ["\n### Gallery Samples\n"]
+                for gm in gallery_media:
+                    g_url = gm["url"]
+                    g_text = gm.get("text", "")
+                    ext = g_url.split("?")[0].split(".")[-1].lower()
+                    if ext in ["mp4", "webm", "mov"]:
+                        gallery_lines.append(f'<video src="{g_url}" controls style="max-width:100%; border-radius:6px; margin:8px 0;"></video>')
+                    else:
+                        gallery_lines.append(f'![Gallery Sample]({g_url})')
+                    if g_text:
+                        gallery_lines.append(f"> **Prompt:** {g_text}\n")
+                gallery_block = "\n".join(gallery_lines)
+                body_markdown = re.sub(r'<Gallery[^>]*\/?>', gallery_block, body_markdown, flags=re.IGNORECASE)
+            else:
+                body_markdown = re.sub(r'<Gallery[^>]*\/?>', '', body_markdown, flags=re.IGNORECASE)
+
         models: list[dict] = []
+
+        sub_folder = self._resolve_hf_subfolder(base_model, tags)
+        resolved_type = self._resolve_hf_model_type(tags, pipeline_tag, model_id, rest_pathname)
 
         for filename in model_files:
             fullname = os.path.basename(filename)
             extension = os.path.splitext(fullname)[1]
             basename = os.path.splitext(fullname)[0]
 
-            description_parts: list[str] = []
+            # Look up size from sibling entries
+            sibling_obj = next((x for x in sibling_entries if x.get("rfilename") == filename), {})
+            size_bytes = sibling_obj.get("size", 0)
+            if not size_bytes and isinstance(sibling_obj.get("lfs"), dict):
+                size_bytes = sibling_obj.get("lfs", {}).get("size", 0)
 
             metadata_info = {
                 "website": "HuggingFace",
                 "modelPage": f"https://huggingface.co/{model_id}",
-                "author": res_data.get("author", None),
+                "author": res_data.get("author") or space,
+                "baseModel": str(base_model) if base_model else "",
+                "license": frontmatter_dict.get("license") or "",
+                "tags": tags[:15] if tags else [],
                 "preview": image_files,
             }
 
@@ -337,37 +478,100 @@ class HuggingfaceModelSearcher(ModelSearcher):
             description_parts.append(yaml.dump(metadata_info).strip())
             description_parts.append("---")
             description_parts.append("")
-            description_parts.append(f"# Trigger Words")
+            description_parts.append("# Trigger Words")
             description_parts.append("")
-            description_parts.append("No trigger words")
+            description_parts.append(", ".join(trigger_words) if trigger_words else "No trigger words")
             description_parts.append("")
-            description_parts.append(f"# About this version")
+            description_parts.append("# About this version")
             description_parts.append("")
-            description_parts.append("No description about this version")
+            description_parts.append(f"File: `{filename}`")
             description_parts.append("")
-            description_parts.append(f"# {res_data.get('name')}")
+            description_parts.append(f"# {res_data.get('id', model_id)}")
             description_parts.append("")
-            description_parts.append("No description about this model")
+            description_parts.append(body_markdown if body_markdown else "No description about this model")
             description_parts.append("")
 
             model = {
                 "id": filename,
-                "shortname": filename,
+                "name": fullname,
+                "shortname": fullname,
                 "basename": basename,
                 "extension": extension,
+                "fullname": fullname,
                 "preview": image_files,
-                "sizeBytes": 0,
-                "type": "",
+                "sizeBytes": size_bytes or 0,
+                "type": resolved_type,
                 "pathIndex": 0,
-                "subFolder": "",
+                "subFolder": sub_folder,
                 "description": "\n".join(description_parts),
-                "metadata": {},
+                "metadata": {
+                    "baseModel": str(base_model) if base_model else "",
+                    "tags": tags,
+                    "pipeline_tag": pipeline_tag,
+                },
                 "downloadPlatform": "huggingface",
                 "downloadUrl": f"https://huggingface.co/{model_id}/resolve/main/{filename}?download=true",
             }
             models.append(model)
 
         return models
+
+    def _resolve_hf_model_type(self, tags: list[str], pipeline_tag: str, model_id: str, rest_pathname: str) -> str:
+        tags_lower = [str(t).lower() for t in tags]
+        combined = f"{' '.join(tags_lower)} {pipeline_tag.lower()} {model_id.lower()} {rest_pathname.lower()}"
+
+        if any(k in combined for k in ["lora", "locon", "dora"]):
+            return "loras"
+        elif any(k in combined for k in ["controlnet", "t2i-adapter"]):
+            return "controlnet"
+        elif "vae" in combined:
+            return "vae"
+        elif any(k in combined for k in ["upscaler", "esrgan", "real-esrgan", "upscale"]):
+            return "upscale_models"
+        elif any(k in combined for k in ["diffusion_models", "unet", "diffusion"]):
+            return "diffusion_models"
+        elif any(k in combined for k in ["text-to-image", "checkpoint", "checkpoints", "diffusers"]):
+            return "checkpoints"
+        return "checkpoints"
+
+    def _resolve_hf_subfolder(self, base_model: Optional[Any], tags: list[str]) -> str:
+        if base_model:
+            if isinstance(base_model, list):
+                base_model = base_model[0] if len(base_model) > 0 else ""
+            elif isinstance(base_model, dict):
+                base_model = base_model.get("name") or base_model.get("id") or ""
+            bm_str = str(base_model).strip().strip("[]'\"` ")
+            if bm_str:
+                bm_name = bm_str.split("/")[-1].strip("[]'\"` ")
+                bm_lower = bm_name.lower()
+                if "flux.1-dev" in bm_lower or "flux-dev" in bm_lower:
+                    return "FLUX.1-dev"
+                elif "flux.1-schnell" in bm_lower or "flux-schnell" in bm_lower:
+                    return "FLUX.1-schnell"
+                elif "flux" in bm_lower:
+                    return "FLUX.1"
+                elif "sdxl" in bm_lower or "stable-diffusion-xl" in bm_lower:
+                    return "SDXL"
+                elif any(x in bm_lower for x in ["v1-5", "sd-1-5", "sd-1.5", "stable-diffusion-v1-5", "v1.5"]):
+                    return "SD1.5"
+                elif "pony" in bm_lower:
+                    return "Pony"
+                elif "illustrious" in bm_lower:
+                    return "Illustrious"
+                elif "wan" in bm_lower:
+                    return "Wan2.1"
+                elif "hunyuan" in bm_lower:
+                    return "HunyuanVideo"
+                elif "minimax" in bm_lower:
+                    return "MiniMax"
+                sanitized = utils.sanitize_filename(bm_name).strip("[]'\"`_ ")
+                return sanitized
+
+        tags_upper = [str(t).strip().strip("[]'\"` ").upper() for t in tags] if tags else []
+        for candidate in ["FLUX.1-DEV", "FLUX.1-SCHNELL", "FLUX", "SDXL", "SD1.5", "PONY", "ILLUSTRIOUS", "WAN2.1", "HUNYUANVIDEO", "MINIMAX"]:
+            if candidate in tags_upper:
+                return candidate
+        return ""
 
     def search_by_hash(self, hash: str):
         raise RuntimeError("Hash search is not supported by Huggingface.")
@@ -388,6 +592,25 @@ class HuggingfaceModelSearcher(ModelSearcher):
 
         return _filter_model_files
 
+    def _match_preview_files(self):
+        extension = [
+            ".png",
+            ".webp",
+            ".jpeg",
+            ".jpg",
+            ".jfif",
+            ".gif",
+            ".apng",
+            ".mp4",
+            ".webm",
+            ".mov",
+        ]
+
+        def _filter_preview_files(file: str):
+            return any(file.lower().endswith(ext) for ext in extension)
+
+        return _filter_preview_files
+
     def _match_image_files(self):
         extension = [
             ".png",
@@ -400,7 +623,7 @@ class HuggingfaceModelSearcher(ModelSearcher):
         ]
 
         def _filter_image_files(file: str):
-            return any(file.endswith(ext) for ext in extension)
+            return any(file.lower().endswith(ext) for ext in extension)
 
         return _filter_image_files
 

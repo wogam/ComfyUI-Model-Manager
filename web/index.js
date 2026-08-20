@@ -246,13 +246,15 @@ function extractFrontmatter(desc) {
   return { cleanDesc: trimmed, info: {} };
 }
 
-// Markdown parser
 function parseMarkdown(md) {
   if (!md || !md.trim()) return "<p style='color:#777; font-style:italic;'>No description provided.</p>";
 
+  // Clean Hugging Face JSX Gallery tags
+  let text = md.replace(/<Gallery\s*\/?>/gi, "").replace(/<Gallery[^>]*>/gi, "");
+
   // 1. Extract Fenced Code Blocks (```code```) to protect them from all other parsing
   const codeBlocks = [];
-  let text = md.replace(/```([a-zA-Z0-9_-]*)\n?([\s\S]*?)```/g, (match, lang, code) => {
+  text = text.replace(/```([a-zA-Z0-9_-]*)\n?([\s\S]*?)```/g, (match, lang, code) => {
     const idx = codeBlocks.length;
     const escapedCode = code
       .replace(/&/g, "&amp;")
@@ -262,7 +264,15 @@ function parseMarkdown(md) {
     return `\n\n@@@CODEBLOCK_${idx}@@@\n\n`;
   });
 
-  // 2. Extract Inline Code (`code`)
+  // 2. Extract Embedded Videos (<video ...></video>)
+  const videoBlocks = [];
+  text = text.replace(/<video([\s\S]*?)<\/video>/gi, (match, attrs) => {
+    const idx = videoBlocks.length;
+    videoBlocks.push(`<video ${attrs} controls style="max-width:100%; max-height:420px; border-radius:6px; margin:10px 0; display:block;" onerror="this.style.display='none'"></video>`);
+    return `\n\n@@@VIDEOBLOCK_${idx}@@@\n\n`;
+  });
+
+  // 3. Extract Inline Code (`code`)
   const inlineCodes = [];
   text = text.replace(/`([^`\n]+)`/g, (match, code) => {
     const idx = inlineCodes.length;
@@ -274,13 +284,13 @@ function parseMarkdown(md) {
     return `@@@INLINECODE_${idx}@@@`;
   });
 
-  // 3. HTML escape remaining characters
+  // 4. HTML escape remaining characters
   text = text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 
-  // 4. Autolinks: <https://...>
+  // 5. Autolinks: <https://...>
   text = text.replace(/&lt;((?:https?|mailto):[^\s&>]+)&gt;/gi, (match, url) => {
     let targetUrl = url;
     if (/civitai\.(com|green)/i.test(targetUrl)) {
@@ -289,13 +299,13 @@ function parseMarkdown(md) {
     return `<a href="${targetUrl}" target="_blank" rel="noopener noreferrer" style="color:#60a5fa; text-decoration:underline;">${url}</a>`;
   });
 
-  // 5. Images: ![alt](url "optional title")
+  // 6. Images: ![alt](url "optional title")
   text = text.replace(/!\[([^\]]*)\]\(([^)\s]+)(?:\s+["']([^"']*)["'])?\)/g, (match, alt, url, title) => {
     const titleAttr = title ? ` title="${title}"` : "";
     return `<img src="${url.trim()}" alt="${alt}"${titleAttr} style="max-width:100%; height:auto; border-radius:6px; margin:14px 0; display:block;" loading="lazy" />`;
   });
 
-  // 6. Links: [text](url "optional title")
+  // 7. Links: [text](url "optional title")
   text = text.replace(/\[([^\]]+)\]\(([^)\s]+)(?:\s+["']([^"']*)["'])?\)/g, (match, linkText, url, title) => {
     let targetUrl = url;
     if (typeof targetUrl === "string" && /civitai\.(com|green)/i.test(targetUrl)) {
@@ -305,38 +315,41 @@ function parseMarkdown(md) {
     return `<a href="${targetUrl}"${titleAttr} target="_blank" rel="noopener noreferrer" style="color:#60a5fa; text-decoration:underline;">${linkText}</a>`;
   });
 
-  // 7. Setext Headings (Heading 1 ===, Heading 2 ---)
+  // 8. Setext Headings (Heading 1 ===, Heading 2 ---)
   text = text.replace(/^([^\n#<>\s][^\n]*)\n=+\s*$/gm, '# $1');
   text = text.replace(/^([^\n#<>\s][^\n]*)\n-+\s*$/gm, '## $1');
 
-  // 8. ATX Headings
-  text = text.replace(/^### (.*$)/gm, '<h3 style="margin:18px 0 8px 0; font-size:1.05rem; color:#fff; font-weight:600;">$1</h3>');
-  text = text.replace(/^## (.*$)/gm, '<h2 style="margin:22px 0 10px 0; font-size:1.2rem; color:#fff; font-weight:600; border-bottom:1px solid #2d2d3a; padding-bottom:4px;">$1</h2>');
-  text = text.replace(/^# (.*$)/gm, '<h1 style="margin:24px 0 12px 0; font-size:1.35rem; color:#fff; font-weight:700; border-bottom:1px solid #445; padding-bottom:6px;">$1</h1>');
+  // 9. ATX Headings (# Heading)
+  text = text.replace(/^######\s+(.*)$/gm, '<h6 style="font-size:0.95rem; font-weight:700; color:#cbd5e1; margin:14px 0 8px 0;">$1</h6>');
+  text = text.replace(/^#####\s+(.*)$/gm, '<h5 style="font-size:1.05rem; font-weight:700; color:#cbd5e1; margin:16px 0 8px 0;">$1</h5>');
+  text = text.replace(/^####\s+(.*)$/gm, '<h4 style="font-size:1.15rem; font-weight:700; color:#e2e8f0; margin:18px 0 8px 0;">$1</h4>');
+  text = text.replace(/^###\s+(.*)$/gm, '<h3 style="font-size:1.25rem; font-weight:700; color:#f1f5f9; margin:20px 0 10px 0;">$1</h3>');
+  text = text.replace(/^##\s+(.*)$/gm, '<h2 style="font-size:1.4rem; font-weight:700; color:#ffffff; margin:22px 0 10px 0; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:6px;">$1</h2>');
+  text = text.replace(/^#\s+(.*)$/gm, '<h1 style="font-size:1.6rem; font-weight:800; color:#ffffff; margin:24px 0 12px 0; border-bottom:1px solid rgba(255,255,255,0.12); padding-bottom:8px;">$1</h1>');
 
-  // 9. Horizontal rules
-  text = text.replace(/^(?:---|___|\*\*\*)\s*$/gm, '<hr style="border:none; border-top:1px solid #334; margin:18px 0;" />');
+  // 10. Horizontal Rules (---, ***, ___)
+  text = text.replace(/^(\s*[-*_]\s*){3,}$/gm, '<hr style="border:none; border-top:1px solid rgba(255,255,255,0.1); margin:18px 0;" />');
 
-  // Helper for inline formatting (Bold, Italic, Unescape)
+  // Helper for inline formatting (Bold, Italic, Strikethrough)
   function formatInline(str) {
     let s = str;
-    // Bold & Italic: ***text*** or ___text___
-    s = s.replace(/\*\*\*([^*\n]+)\*\*\*/g, '<strong><em>$1</em></strong>');
-    s = s.replace(/___([^_\n]+)___/g, '<strong><em>$1</em></strong>');
-    // Bold: **text** or __text__
-    s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
-    s = s.replace(/__([^_\n]+)__/g, '<strong>$1</strong>');
-    // Italic: *text* or _text_
-    s = s.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
-    s = s.replace(/\b_([^_]+)_\b/g, '<em>$1</em>');
-    // Unescape markdown backslash escapes (e.g. \_, \*, \(, \))
-    s = s.replace(/\\([\\`*_{}\[\]()#+\-.!])/g, "$1");
+    // Bold + Italic (***text*** or ___text___)
+    s = s.replace(/\*\*\*([^\*]+)\*\*\*/g, '<strong style="font-weight:700; color:#fff;"><em>$1</em></strong>');
+    s = s.replace(/___([^_]+)___/g, '<strong style="font-weight:700; color:#fff;"><em>$1</em></strong>');
+    // Bold (**text** or __text__)
+    s = s.replace(/\*\*([^\*]+)\*\*/g, '<strong style="font-weight:700; color:#fff;">$1</strong>');
+    s = s.replace(/__([^_]+)__/g, '<strong style="font-weight:700; color:#fff;">$1</strong>');
+    // Italic (*text* or _text_)
+    s = s.replace(/\*([^\*]+)\*/g, '<em style="color:#cbd5e1;">$1</em>');
+    s = s.replace(/_([^_]+)_/g, '<em style="color:#cbd5e1;">$1</em>');
+    // Strikethrough (~~text~~)
+    s = s.replace(/~~([^~]+)~~/g, '<del style="color:#9ca3af;">$1</del>');
     return s;
   }
 
-  // 10. Block & List & Paragraph processing
-  const lines = text.split("\n");
-  let result = [];
+  // 11. Parse Blocks (Lists, Blockquotes, Paragraphs)
+  const lines = text.split(/\r?\n/);
+  const result = [];
   let inUl = false;
   let inOl = false;
   let currentParagraph = [];
@@ -370,7 +383,7 @@ function parseMarkdown(md) {
       continue;
     }
 
-    if (trimmed.startsWith("@@@CODEBLOCK_")) {
+    if (trimmed.startsWith("@@@CODEBLOCK_") || trimmed.startsWith("@@@VIDEOBLOCK_")) {
       flushParagraph();
       flushList();
       result.push(trimmed);
@@ -435,12 +448,17 @@ function parseMarkdown(md) {
 
   let htmlOutput = result.join("\n");
 
-  // 11. Restore Code Blocks
+  // 12. Restore Code Blocks
   htmlOutput = htmlOutput.replace(/@@@CODEBLOCK_(\d+)@@@/g, (match, idx) => {
     return codeBlocks[parseInt(idx, 10)] || "";
   });
 
-  // 12. Restore Inline Codes
+  // 13. Restore Video Blocks
+  htmlOutput = htmlOutput.replace(/@@@VIDEOBLOCK_(\d+)@@@/g, (match, idx) => {
+    return videoBlocks[parseInt(idx, 10)] || "";
+  });
+
+  // 14. Restore Inline Codes
   htmlOutput = htmlOutput.replace(/@@@INLINECODE_(\d+)@@@/g, (match, idx) => {
     return inlineCodes[parseInt(idx, 10)] || "";
   });
@@ -462,6 +480,198 @@ const state = {
   modelsList: [],
   activeDownloadInterval: null,
 };
+
+// Subfolder aggregation and dynamic cascading dropdown helpers
+const categorySubfoldersCache = {};
+
+function buildFolderTree(subfolderPaths) {
+  const root = {};
+  if (!Array.isArray(subfolderPaths)) return root;
+  subfolderPaths.forEach(path => {
+    if (!path || path === "(root)") return;
+    const parts = path.split("/").map(p => p.trim()).filter(Boolean);
+    let current = root;
+    parts.forEach(part => {
+      if (!current[part]) {
+        current[part] = {};
+      }
+      current = current[part];
+    });
+  });
+  return root;
+}
+
+async function fetchCategorySubfolders(category) {
+  if (!category) return [];
+  if (categorySubfoldersCache[category]) {
+    return categorySubfoldersCache[category];
+  }
+
+  const subfolders = new Set();
+  if (state.modelsList && state.modelsList.length > 0 && state.modelsList[0]?.type === category) {
+    state.modelsList.forEach(m => {
+      const sub = (m.subFolder || "").trim();
+      if (sub && sub !== "(root)") {
+        subfolders.add(sub);
+      }
+    });
+    const resList = Array.from(subfolders).sort();
+    categorySubfoldersCache[category] = resList;
+    return resList;
+  }
+
+  try {
+    const res = await apiFetch(`/model-manager/models/${encodeURIComponent(category)}`);
+    if (res && res.success && Array.isArray(res.data)) {
+      res.data.forEach(m => {
+        const sub = (m.subFolder || "").trim();
+        if (sub && sub !== "(root)") {
+          subfolders.add(sub);
+        }
+      });
+    }
+  } catch (err) {
+    console.debug(`[ModelManager] Could not fetch subfolders for ${category}:`, err);
+  }
+
+  const resList = Array.from(subfolders).sort();
+  categorySubfoldersCache[category] = resList;
+  return resList;
+}
+
+function setupSubfolderCascadingPicker(inputEl, categorySelectOrVal, dropdownsContainerEl) {
+  if (!inputEl) return;
+  const datalistId = "cmm-subfolders-list-" + Math.random().toString(36).substr(2, 7);
+  let datalist = document.getElementById(datalistId);
+  if (!datalist) {
+    datalist = document.createElement("datalist");
+    datalist.id = datalistId;
+    document.body.appendChild(datalist);
+  }
+  inputEl.setAttribute("list", datalistId);
+
+  let currentTree = {};
+  let currentSubs = [];
+
+  const renderDropdowns = () => {
+    if (!dropdownsContainerEl) return;
+    dropdownsContainerEl.innerHTML = "";
+
+    const topKeys = Object.keys(currentTree).sort();
+    if (topKeys.length === 0) {
+      return;
+    }
+
+    const currentPath = inputEl.value.trim();
+    const segments = currentPath.split("/").map(s => s.trim()).filter(Boolean);
+
+    let currentNode = currentTree;
+    let accumulatedPath = [];
+
+    for (let level = 0; level <= segments.length; level++) {
+      const keys = Object.keys(currentNode).sort();
+      if (keys.length === 0) {
+        break;
+      }
+
+      if (level > 0) {
+        const sep = document.createElement("span");
+        sep.className = "cmm-subfolder-step-sep";
+        sep.textContent = "›";
+        dropdownsContainerEl.appendChild(sep);
+      }
+
+      const select = document.createElement("select");
+      select.className = "cmm-select cmm-subfolder-step";
+
+      const selectedValue = segments[level] || "";
+      select.title = selectedValue ? `Subfolder: ${selectedValue}` : (level === 0 ? "Folder: (root)" : `Folder: (all in ${segments[level - 1]})`);
+
+      // Default root or keep current level option
+      const defaultOpt = document.createElement("option");
+      if (level === 0) {
+        defaultOpt.value = "";
+        defaultOpt.textContent = "📁 (root)";
+      } else {
+        defaultOpt.value = "";
+        defaultOpt.textContent = `📁 (all)`;
+      }
+      select.appendChild(defaultOpt);
+
+      keys.forEach(k => {
+        const opt = document.createElement("option");
+        opt.value = k;
+        opt.textContent = k;
+        opt.title = k;
+        if (k === selectedValue) {
+          opt.selected = true;
+        }
+        select.appendChild(opt);
+      });
+
+      const currentLevelAccum = [...accumulatedPath];
+
+      select.onchange = () => {
+        const val = select.value.trim();
+        let newSegments = [...currentLevelAccum];
+        if (val) {
+          newSegments.push(val);
+        }
+        const newPath = newSegments.join("/");
+        inputEl.value = newPath;
+        inputEl.dispatchEvent(new Event("input", { bubbles: true }));
+        inputEl.dispatchEvent(new Event("change", { bubbles: true }));
+        renderDropdowns();
+      };
+
+      dropdownsContainerEl.appendChild(select);
+
+      if (selectedValue && currentNode[selectedValue]) {
+        accumulatedPath.push(selectedValue);
+        currentNode = currentNode[selectedValue];
+      } else {
+        break;
+      }
+    }
+  };
+
+  const renderDatalist = (existingSubs) => {
+    datalist.innerHTML = "";
+    existingSubs.forEach(sub => {
+      const opt = document.createElement("option");
+      opt.value = sub;
+      datalist.appendChild(opt);
+    });
+  };
+
+  const refreshSuggestions = async () => {
+    const category = typeof categorySelectOrVal === "function" ? categorySelectOrVal() : (categorySelectOrVal?.value || categorySelectOrVal || state.currentFolder);
+    if (!category) return;
+
+    if (categorySubfoldersCache[category]) {
+      currentSubs = categorySubfoldersCache[category];
+      currentTree = buildFolderTree(currentSubs);
+      renderDatalist(currentSubs);
+      renderDropdowns();
+    } else if (dropdownsContainerEl) {
+      dropdownsContainerEl.innerHTML = "";
+    }
+
+    const subs = await fetchCategorySubfolders(category);
+    currentSubs = subs;
+    currentTree = buildFolderTree(subs);
+    renderDatalist(subs);
+    renderDropdowns();
+  };
+
+  inputEl.addEventListener("input", renderDropdowns);
+  inputEl.addEventListener("change", renderDropdowns);
+
+  refreshSuggestions();
+  if (categorySelectOrVal && typeof categorySelectOrVal.addEventListener === "function") {
+    categorySelectOrVal.addEventListener("change", refreshSuggestions);
+  }
+}
 
 // --- MAIN MODEL MANAGER DIALOG ---
 async function openModelManagerDialog() {
@@ -882,6 +1092,7 @@ async function openModelDetailModal(model, onRefresh) {
               <div>
                 <label style="display:block; font-size:0.84rem; font-weight:600; color:#e2e8f0; margin-bottom:6px;">Subfolder Path:</label>
                 <input type="text" class="cmm-input" id="cmm-rename-subfolder" value="${escapeHtml(model.subFolder || '')}" style="width:100%; box-sizing:border-box;" placeholder="e.g. SDXL/Base (leave empty for root)" />
+                <div class="cmm-subfolder-dropdowns" id="cmm-rename-subfolder-dropdowns"></div>
               </div>
               <div>
                 <label style="display:block; font-size:0.84rem; font-weight:600; color:#e2e8f0; margin-bottom:6px;">Basename (without extension):</label>
@@ -918,6 +1129,13 @@ async function openModelDetailModal(model, onRefresh) {
 
   dialog.querySelector("#cmm-detail-close").onclick = () => overlay.remove();
 
+  // Setup cascading subfolder picker for Rename & Move tab
+  setupSubfolderCascadingPicker(
+    dialog.querySelector("#cmm-rename-subfolder"),
+    model.type,
+    dialog.querySelector("#cmm-rename-subfolder-dropdowns")
+  );
+
   // Quick Copy Filename & Path
   dialog.querySelector("#cmm-header-filename").onclick = () => copyToClipboard(model.basename + model.extension, "Filename copied!");
   dialog.querySelector("#cmm-copy-filename-btn").onclick = () => copyToClipboard(model.basename + model.extension, "Filename copied!");
@@ -946,17 +1164,37 @@ async function openModelDetailModal(model, onRefresh) {
     singleScanBtn.disabled = true;
     singleScanBtn.textContent = "Fetching...";
     try {
-      const res = await apiFetch(`/model-manager/model/${model.type}/${model.pathIndex}/${encodeURIComponent(relativeFilename)}/scan`, {
+      let res = await apiFetch(`/model-manager/model/${model.type}/${model.pathIndex}/${encodeURIComponent(relativeFilename)}/scan`, {
         method: "POST",
       });
-      if (res.success && res.data) {
+      if (res.success && res.data && (res.data.description || res.data.preview)) {
         showToast("Metadata & preview fetched!");
         if (res.data.description) {
           updateDescDisplay(res.data.description);
         }
         if (onRefresh) onRefresh();
       } else {
-        showToast("Failed to fetch model info: " + (res.error || "No match found"));
+        // If not found by hash or existing URL, prompt user for URL
+        const userUrl = prompt("No match found by SHA256 hash.\nEnter HuggingFace or Civitai URL for this model:");
+        if (userUrl && userUrl.trim()) {
+          singleScanBtn.textContent = "Fetching from URL...";
+          const urlRes = await apiFetch(`/model-manager/model/${model.type}/${model.pathIndex}/${encodeURIComponent(relativeFilename)}/scan`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: userUrl.trim() }),
+          });
+          if (urlRes.success && urlRes.data) {
+            showToast("Model metadata & preview fetched from URL!");
+            if (urlRes.data.description) {
+              updateDescDisplay(urlRes.data.description);
+            }
+            if (onRefresh) onRefresh();
+          } else {
+            showToast("Failed to fetch info from URL: " + (urlRes.error || "Unknown error"));
+          }
+        } else {
+          showToast("Fetch cancelled or no match found.");
+        }
       }
     } catch (err) {
       showToast("Error fetching model info: " + err.message);
@@ -1313,6 +1551,22 @@ async function openDownloadManagerModal() {
             <button class="cmm-btn" id="cmm-dl-parse-btn">🔍 Parse Link</button>
           </div>
 
+          <!-- Multi-model file selector (Shown when repository contains multiple files) -->
+          <div id="cmm-dl-multi-files-box" style="display:none; background:rgba(99, 102, 241, 0.08); border:1px solid rgba(99, 102, 241, 0.25); border-radius:6px; padding:10px 12px; flex-direction:column; gap:8px; width:100%; max-width:100%; box-sizing:border-box; overflow:hidden;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+              <span style="font-size:0.8rem; font-weight:600; color:#c7d2fe; display:flex; align-items:center; gap:6px;">
+                <span>📦</span> <span id="cmm-dl-files-count-badge">Found multiple model files in repository</span>
+              </span>
+              <button class="cmm-btn" id="cmm-dl-stage-all-btn" style="font-size:0.75rem; padding:3px 8px; background:rgba(99, 102, 241, 0.2); border-color:rgba(99, 102, 241, 0.4); color:#e0e7ff;" title="Add all files in this repository to bulk downloads staging">
+                ➕ Queue All Files to Staging
+              </button>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center; width:100%; min-width:0; box-sizing:border-box;">
+              <label style="font-size:0.78rem; color:#94a3b8; font-weight:500; flex-shrink:0;">Select Model File:</label>
+              <select class="cmm-select" id="cmm-dl-file-select" style="flex:1; min-width:0; width:100%; max-width:100%; box-sizing:border-box; font-size:0.82rem; font-family:monospace; text-overflow:ellipsis; overflow:hidden;"></select>
+            </div>
+          </div>
+
           <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:10px;">
             <div>
               <label style="font-size:0.78rem; color:#94a3b8; display:block; margin-bottom:4px; font-weight:500;">Target Category:</label>
@@ -1321,6 +1575,7 @@ async function openDownloadManagerModal() {
             <div>
               <label style="font-size:0.78rem; color:#94a3b8; display:block; margin-bottom:4px; font-weight:500;">Subfolder Path:</label>
               <input type="text" class="cmm-input" id="cmm-dl-subfolder" placeholder="e.g. SDXL 1.0/Style" style="width:100%; box-sizing:border-box;" />
+              <div class="cmm-subfolder-dropdowns" id="cmm-dl-subfolder-dropdowns"></div>
             </div>
             <div>
               <label style="font-size:0.78rem; color:#94a3b8; display:block; margin-bottom:4px; font-weight:500;">Filename on Disk:</label>
@@ -1433,6 +1688,13 @@ async function openDownloadManagerModal() {
     bulkCategorySelect.appendChild(bulkOpt);
   });
 
+  // Setup cascading subfolder picker for Single Download panel
+  setupSubfolderCascadingPicker(
+    dialog.querySelector("#cmm-dl-subfolder"),
+    categorySelect,
+    dialog.querySelector("#cmm-dl-subfolder-dropdowns")
+  );
+
   // Tab switching logic
   const singleTab = dialog.querySelector("#cmm-dl-tab-single");
   const bulkTab = dialog.querySelector("#cmm-dl-tab-bulk");
@@ -1476,6 +1738,66 @@ async function openDownloadManagerModal() {
 
   // --- SINGLE DOWNLOAD LOGIC ---
   let parsedData = null;
+  let allParsedModels = [];
+
+  const multiFilesBox = dialog.querySelector("#cmm-dl-multi-files-box");
+  const fileSelect = dialog.querySelector("#cmm-dl-file-select");
+  const countBadge = dialog.querySelector("#cmm-dl-files-count-badge");
+  const stageAllBtn = dialog.querySelector("#cmm-dl-stage-all-btn");
+
+  const applySelectedModel = (data) => {
+    if (!data) return;
+    parsedData = data;
+    const targetFilename = data.fullname || data.name || (data.basename ? `${data.basename}${data.extension || '.safetensors'}` : "");
+    if (targetFilename) {
+      dialog.querySelector("#cmm-dl-filename").value = targetFilename;
+    }
+    if (data.subFolder) {
+      dialog.querySelector("#cmm-dl-subfolder").value = data.subFolder;
+    }
+    if (data.type) {
+      const matchingOpt = Array.from(categorySelect.options).find(opt => opt.value.toLowerCase() === data.type.toLowerCase());
+      if (matchingOpt) {
+        categorySelect.value = matchingOpt.value;
+        categorySelect.dispatchEvent(new Event("change"));
+      }
+    }
+  };
+
+  fileSelect.onchange = () => {
+    const idx = parseInt(fileSelect.value);
+    if (!isNaN(idx) && allParsedModels[idx]) {
+      applySelectedModel(allParsedModels[idx]);
+    }
+  };
+
+  stageAllBtn.onclick = () => {
+    if (!allParsedModels || allParsedModels.length === 0) return;
+    const defaultCategory = categorySelect.value;
+    const customSub = dialog.querySelector("#cmm-dl-subfolder").value.trim();
+
+    const stagedItems = allParsedModels.map(m => {
+      const targetFilename = m.fullname || m.name || (m.basename ? `${m.basename}${m.extension || '.safetensors'}` : "");
+      return {
+        id: "stage_" + Math.random().toString(36).substr(2, 9),
+        url: m.downloadUrl || dialog.querySelector("#cmm-dl-url").value.trim(),
+        status: "ready",
+        errorMsg: "",
+        parsedData: m,
+        category: m.type || defaultCategory,
+        subfolder: m.subFolder || customSub || "",
+        filename: targetFilename || "model.safetensors",
+        sizeBytes: m.sizeBytes || 0,
+        preview: m.preview ? (Array.isArray(m.preview) ? m.preview[0] : m.preview) : "",
+        platform: (m.downloadPlatform || m.website || "url").toLowerCase(),
+      };
+    });
+
+    stagedDownloads = stagedDownloads.concat(stagedItems);
+    bulkTab.click();
+    renderStagedDownloads();
+    showToast(`Added ${stagedItems.length} files to Staged Downloads!`);
+  };
 
   const parseBtn = dialog.querySelector("#cmm-dl-parse-btn");
   parseBtn.onclick = async () => {
@@ -1489,30 +1811,28 @@ async function openDownloadManagerModal() {
     try {
       const res = await apiFetch(`/model-manager/model-info?model-page=${encodeURIComponent(url)}`);
       if (res.success && res.data && res.data.length > 0) {
-        parsedData = res.data[0];
-        
-        // Auto-fill Filename formatted like import.py ({Model Name} - {Version Name}.safetensors)
-        const targetFilename = parsedData.fullname || parsedData.name || (parsedData.basename ? `${parsedData.basename}${parsedData.extension || '.safetensors'}` : "");
-        if (targetFilename) {
-          dialog.querySelector("#cmm-dl-filename").value = targetFilename;
+        allParsedModels = res.data;
+
+        if (allParsedModels.length > 1) {
+          multiFilesBox.style.display = "flex";
+          countBadge.textContent = `Found ${allParsedModels.length} model files in repository`;
+          fileSelect.innerHTML = "";
+          allParsedModels.forEach((m, idx) => {
+            const opt = document.createElement("option");
+            opt.value = idx;
+            const sizeStr = m.sizeBytes > 0 ? ` (${formatBytes(m.sizeBytes)})` : "";
+            opt.textContent = `${m.fullname || m.name || m.shortname}${sizeStr}`;
+            fileSelect.appendChild(opt);
+          });
+        } else {
+          multiFilesBox.style.display = "none";
         }
 
-        // Auto-fill Subfolder
-        if (parsedData.subFolder) {
-          dialog.querySelector("#cmm-dl-subfolder").value = parsedData.subFolder;
-        }
-
-        // Auto-select Category
-        if (parsedData.type) {
-          const matchingOpt = Array.from(categorySelect.options).find(opt => opt.value === parsedData.type);
-          if (matchingOpt) {
-            categorySelect.value = parsedData.type;
-          }
-        }
-
-        showToast("Link parsed successfully!");
-        console.log(`[ModelManager] Found model info from ${parsedData.website || 'web'}: Filename=${targetFilename}, Subfolder=${parsedData.subFolder || '(root)'}`);
+        applySelectedModel(allParsedModels[0]);
+        showToast(`Parsed successfully! Found ${allParsedModels.length} file${allParsedModels.length === 1 ? '' : 's'}.`);
+        console.log(`[ModelManager] Found ${allParsedModels.length} model files from ${allParsedModels[0].website || 'web'}`);
       } else {
+        multiFilesBox.style.display = "none";
         showToast("⚠️ Could not parse model details from URL");
         console.warn("[ModelManager] Failed to parse URL or no downloadable file found.");
       }
@@ -1741,7 +2061,8 @@ async function openDownloadManagerModal() {
 
             const res = await apiFetch(`/model-manager/model-info?model-page=${encodeURIComponent(item.url)}`);
             if (res && res.success && res.data && res.data.length > 0) {
-              const data = res.data[0];
+              const allFiles = res.data;
+              const data = allFiles[0];
               item.parsedData = data;
               item.platform = (data.downloadPlatform || data.website || platform).toLowerCase();
               
@@ -1769,6 +2090,38 @@ async function openDownloadManagerModal() {
               item.sizeBytes = data.sizeBytes || 0;
               item.preview = data.preview ? (Array.isArray(data.preview) ? data.preview[0] : data.preview) : "";
               item.status = "ready";
+
+              // Expand extra files from repo as separate staged rows
+              if (allFiles.length > 1) {
+                const extraItems = allFiles.slice(1).map(extraData => {
+                  const extraTargetFilename = extraData.fullname || extraData.name || (extraData.basename ? `${extraData.basename}${extraData.extension || '.safetensors'}` : "");
+                  let extraCat = item.category;
+                  if (defaultCategory === "AUTO") {
+                    const extraAutoCat = extraData.type;
+                    const extraMatch = extraAutoCat && Object.keys(state.foldersList).find(f => f.toLowerCase() === extraAutoCat.toLowerCase());
+                    extraCat = extraMatch || extraAutoCat || item.category;
+                  }
+                  let extraSub = item.subfolder;
+                  if (subfolderMode === "AUTO") extraSub = extraData.subFolder || "";
+                  else if (subfolderMode === "CUSTOM") extraSub = customSubfolderVal;
+                  else extraSub = "";
+
+                  return {
+                    id: "stage_" + Math.random().toString(36).substr(2, 9),
+                    url: extraData.downloadUrl || item.url,
+                    status: "ready",
+                    errorMsg: "",
+                    parsedData: extraData,
+                    category: extraCat,
+                    subfolder: extraSub,
+                    filename: extraTargetFilename || "model.safetensors",
+                    sizeBytes: extraData.sizeBytes || 0,
+                    preview: extraData.preview ? (Array.isArray(extraData.preview) ? extraData.preview[0] : extraData.preview) : "",
+                    platform: (extraData.downloadPlatform || extraData.website || platform).toLowerCase(),
+                  };
+                });
+                stagedDownloads.splice(itemIdx + 1, 0, ...extraItems);
+              }
             } else {
               // Direct download link or fallback
               let cleanFile = "model.safetensors";
@@ -2091,6 +2444,7 @@ function openUploadModal() {
       <div>
         <label style="display:block; font-size:0.84rem; font-weight:600; color:#e2e8f0; margin-bottom:4px;">Subfolder Path (optional):</label>
         <input type="text" class="cmm-input" id="cmm-up-subfolder" placeholder="e.g. SDXL/Base" style="width:100%; box-sizing:border-box;" />
+        <div class="cmm-subfolder-dropdowns" id="cmm-up-subfolder-dropdowns"></div>
       </div>
 
       <div class="cmm-dropzone" id="cmm-up-dropzone">
@@ -2123,6 +2477,13 @@ function openUploadModal() {
     if (folder === state.currentFolder) opt.selected = true;
     categorySelect.appendChild(opt);
   });
+
+  // Setup cascading subfolder picker for Upload modal
+  setupSubfolderCascadingPicker(
+    dialog.querySelector("#cmm-up-subfolder"),
+    categorySelect,
+    dialog.querySelector("#cmm-up-subfolder-dropdowns")
+  );
 
   const dropzone = dialog.querySelector("#cmm-up-dropzone");
   const fileInput = dialog.querySelector("#cmm-up-file-input");

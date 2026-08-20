@@ -118,6 +118,8 @@
   outline: none;
   transition: all 0.12s ease;
   box-sizing: border-box;
+  max-width: 100%;
+  text-overflow: ellipsis;
 }
 
 .cmm-select:focus, .cmm-input:focus {
@@ -623,7 +625,78 @@
   color: #ffffff;
 }
 
-.cmm-trigger-chip:active {
+.cmm-subfolder-dropdowns {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 5px;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.cmm-subfolder-step {
+  flex: 1 1 0;
+  min-width: 0;
+  width: 100%;
+  font-size: 0.75rem;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: #14141f;
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  color: #c7d2fe;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+  cursor: pointer;
+  height: 25px;
+  line-height: 19px;
+  box-sizing: border-box;
+}
+
+.cmm-subfolder-step:hover {
+  border-color: rgba(99, 102, 241, 0.55);
+  background: #1a1a2d;
+  color: #ffffff;
+}
+
+.cmm-subfolder-step:focus {
+  border-color: #818cf8;
+  background: #1c1c32;
+  outline: none;
+}
+
+.cmm-subfolder-step-sep {
+  color: #818cf8;
+  font-size: 0.74rem;
+  user-select: none;
+  font-weight: 700;
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+.cmm-subfolder-chip {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #94a3b8;
+  font-size: 0.73rem;
+  padding: 2px 7px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  user-select: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.cmm-subfolder-chip:hover {
+  background: rgba(99, 102, 241, 0.18);
+  border-color: rgba(99, 102, 241, 0.4);
+  color: #c7d2fe;
+}
+
+.cmm-subfolder-chip:active {
   transform: scale(0.96);
 }
 

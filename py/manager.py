@@ -249,9 +249,50 @@ class ModelManager:
                 if not model_path or not os.path.isfile(model_path):
                     raise RuntimeError(f"Model file {filename} not found")
 
-                from .information import CivitaiModelSearcher
-                hash_value = utils.calculate_sha256(model_path)
-                model_info = CivitaiModelSearcher().search_by_hash(hash_value, request=request)
+                req_body = await utils.get_request_body(request)
+                target_url = req_body.get("url") or req_body.get("modelPage") or request.query.get("url")
+
+                # If no URL passed in request, check if existing description file contains modelPage frontmatter
+                if not target_url:
+                    existing_info = self.get_model_info(model_path)
+                    existing_desc = existing_info.get("description") or ""
+                    if existing_desc:
+                        fm_match = re.match(r"^---\s*\r?\n(.*?)\r?\n---\s*", existing_desc, re.DOTALL)
+                        if fm_match:
+                            try:
+                                import yaml
+                                loaded_fm = yaml.safe_load(fm_match.group(1))
+                                if isinstance(loaded_fm, dict):
+                                    target_url = loaded_fm.get("modelPage") or loaded_fm.get("url")
+                            except Exception:
+                                pass
+
+                model_info = None
+
+                # 1. If target_url is found (HuggingFace or Civitai URL), fetch directly from URL
+                if target_url:
+                    from .information import Information
+                    try:
+                        search_results = Information().fetch_model_info(target_url, request=request)
+                        if search_results and len(search_results) > 0:
+                            clean_fname = os.path.basename(filename)
+                            clean_base = os.path.splitext(clean_fname)[0]
+                            matched_item = next(
+                                (m for m in search_results if m.get("fullname") == clean_fname or m.get("basename") == clean_base or m.get("id") == clean_fname),
+                                search_results[0]
+                            )
+                            model_info = matched_item
+                    except Exception as e:
+                        utils.print_warning(f"URL info fetch failed for {target_url}: {e}")
+
+                # 2. If no info found from URL, fallback to Civitai SHA256 hash lookup
+                if not model_info:
+                    from .information import CivitaiModelSearcher
+                    try:
+                        hash_value = utils.calculate_sha256(model_path)
+                        model_info = CivitaiModelSearcher().search_by_hash(hash_value, request=request)
+                    except Exception as e:
+                        utils.print_warning(f"Hash lookup failed for {filename}: {e}")
 
                 if model_info:
                     preview_url_list = model_info.get("preview", [])
