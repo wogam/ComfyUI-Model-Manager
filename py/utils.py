@@ -1,3 +1,4 @@
+import asyncio
 import os
 import re
 import json
@@ -593,7 +594,25 @@ def get_api_key(request: Optional[web.Request] = None, platform: str = "civitai"
 
 
 async def send_json(event: str, data: Any, sid: str = None):
-    await config.serverInstance.send_json(event, data, sid)
+    try:
+        if hasattr(config.serverInstance, "send_sync"):
+            config.serverInstance.send_sync(event, data, sid)
+            return
+
+        server_loop = getattr(config.serverInstance, "loop", None)
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
+
+        if server_loop and current_loop != server_loop:
+            server_loop.call_soon_threadsafe(
+                lambda: asyncio.create_task(config.serverInstance.send_json(event, data, sid))
+            )
+        else:
+            await config.serverInstance.send_json(event, data, sid)
+    except Exception as e:
+        print_error(f"Failed to send json event '{event}': {e}")
 
 
 import sys

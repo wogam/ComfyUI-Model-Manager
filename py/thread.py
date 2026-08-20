@@ -21,37 +21,37 @@ class DownloadThreadPool:
             if task_id in self.running_tasks:
                 return "Existing"
             self.running_tasks.add(task_id)
-        self.task_queue.put((task, task_id))
-        return self._adjust_worker_count()
-
-    def _adjust_worker_count(self):
-        if self.workers_count < self.max_worker:
-            self._start_worker()
-            return "Running"
-        else:
-            return "Waiting"
-
-    def _start_worker(self):
-        t = threading.Thread(target=self._worker, daemon=True)
-        t.start()
-        with self._lock:
-            self.workers_count += 1
+            self.task_queue.put((task, task_id))
+            if self.workers_count < self.max_worker:
+                self.workers_count += 1
+                t = threading.Thread(target=self._worker, daemon=True)
+                t.start()
+                return "Running"
+            else:
+                return "Waiting"
 
     def _worker(self):
         loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
 
-        while True:
-            if self.task_queue.empty():
-                break
+        try:
+            while True:
+                try:
+                    task, task_id = self.task_queue.get_nowait()
+                except queue.Empty:
+                    break
 
-            task, task_id = self.task_queue.get()
-
+                try:
+                    loop.run_until_complete(task(task_id))
+                except Exception as e:
+                    utils.print_error(f"worker run error: {str(e)}")
+                finally:
+                    with self._lock:
+                        self.running_tasks.discard(task_id)
+        finally:
             try:
-                loop.run_until_complete(task(task_id))
-                with self._lock:
-                    self.running_tasks.remove(task_id)
-            except Exception as e:
-                utils.print_error(f"worker run error: {str(e)}")
-
-        with self._lock:
-            self.workers_count -= 1
+                loop.close()
+            except Exception:
+                pass
+            with self._lock:
+                self.workers_count -= 1
