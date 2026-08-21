@@ -90,6 +90,64 @@ function getNoPreviewHTML(text = "No Preview") {
   `;
 }
 
+const animatedMediaCache = new Map();
+
+async function checkIsAnimatedImage(url) {
+  if (!url) return false;
+  if (animatedMediaCache.has(url)) return animatedMediaCache.get(url);
+
+  try {
+    const res = await fetch(url, { headers: { Range: "bytes=0-127" } });
+    if (!res.ok && res.status !== 206) {
+      animatedMediaCache.set(url, false);
+      return false;
+    }
+    const buffer = await res.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    if (bytes.length < 21) {
+      animatedMediaCache.set(url, false);
+      return false;
+    }
+
+    // Check WebP: RIFF (0-3) and WEBP (8-11)
+    if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+        bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) {
+      // VP8X extended header
+      if (bytes[12] === 0x56 && bytes[13] === 0x50 && bytes[14] === 0x38 && bytes[15] === 0x58) {
+        if ((bytes[20] & 0x02) !== 0) {
+          animatedMediaCache.set(url, true);
+          return true;
+        }
+      }
+      // Check for ANIM chunk
+      for (let i = 12; i <= bytes.length - 4; i++) {
+        if (bytes[i] === 0x41 && bytes[i+1] === 0x4e && bytes[i+2] === 0x49 && bytes[i+3] === 0x4d) {
+          animatedMediaCache.set(url, true);
+          return true;
+        }
+      }
+      animatedMediaCache.set(url, false);
+      return false;
+    }
+
+    // Check GIF: GIF87a / GIF89a
+    if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38) {
+      for (let i = 0; i <= bytes.length - 8; i++) {
+        if (bytes[i] === 0x4e && bytes[i+1] === 0x45 && bytes[i+2] === 0x54 && bytes[i+3] === 0x53) {
+          animatedMediaCache.set(url, true);
+          return true;
+        }
+      }
+    }
+
+    animatedMediaCache.set(url, false);
+    return false;
+  } catch (e) {
+    animatedMediaCache.set(url, false);
+    return false;
+  }
+}
+
 function showToast(message, duration = 2800) {
   if (!message) return;
   const existing = document.querySelector(".cmm-toast");
@@ -1070,30 +1128,135 @@ async function openModelManagerDialog() {
     const card = document.createElement("div");
     card.className = "cmm-card";
 
-    let mediaHTML = "";
+    const mediaContainer = document.createElement("div");
+    mediaContainer.className = "cmm-card-media";
+
     if (model.preview) {
       const ext = model.preview.split(".").pop().toLowerCase();
       if (["mp4", "webm", "mov"].includes(ext)) {
-        mediaHTML = `<video src="${model.preview}" autoplay loop muted playsinline onerror="this.onerror=null; this.parentElement.innerHTML=getNoPreviewHTML();"></video>`;
+        const video = document.createElement("video");
+        video.src = model.preview;
+        video.loop = true;
+        video.muted = true;
+        video.playsInline = true;
+        video.preload = "metadata";
+        video.onerror = () => {
+          mediaContainer.innerHTML = getNoPreviewHTML();
+        };
+
+        const badge = document.createElement("div");
+        badge.className = "cmm-media-badge";
+        badge.textContent = "▶ Video";
+
+        mediaContainer.appendChild(video);
+        mediaContainer.appendChild(badge);
+
+        card.onmouseenter = () => {
+          video.play().catch(() => {});
+        };
+        card.onmouseleave = () => {
+          video.pause();
+          video.currentTime = 0;
+        };
       } else {
-        mediaHTML = `<img src="${model.preview}" loading="lazy" alt="preview" onerror="this.onerror=null; this.parentElement.innerHTML=getNoPreviewHTML();" />`;
+        const canvas = document.createElement("canvas");
+        canvas.className = "cmm-card-canvas";
+        mediaContainer.appendChild(canvas);
+
+        let animImg = null;
+        let isLoaded = false;
+        let isHovered = false;
+        let isAnimated = false;
+        let badgeEl = null;
+
+        // Check if WebP/image is animated ("webp video")
+        checkIsAnimatedImage(model.preview).then(anim => {
+          if (anim) {
+            isAnimated = true;
+            if (!badgeEl) {
+              badgeEl = document.createElement("div");
+              badgeEl.className = "cmm-media-badge";
+              badgeEl.textContent = "▶ Video";
+              mediaContainer.appendChild(badgeEl);
+            }
+            if (isHovered && isLoaded && !animImg) {
+              animImg = document.createElement("img");
+              animImg.src = model.preview;
+              animImg.decoding = "async";
+              animImg.className = "cmm-card-anim-img";
+              animImg.alt = "preview";
+              mediaContainer.appendChild(animImg);
+            }
+          }
+        });
+
+        const img = new Image();
+        img.decoding = "async";
+        img.src = model.preview;
+
+        img.onload = () => {
+          isLoaded = true;
+          canvas.width = img.naturalWidth || 300;
+          canvas.height = img.naturalHeight || 300;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(img, 0, 0);
+          }
+          if (isHovered && isAnimated && !animImg) {
+            animImg = document.createElement("img");
+            animImg.src = model.preview;
+            animImg.decoding = "async";
+            animImg.className = "cmm-card-anim-img";
+            animImg.alt = "preview";
+            mediaContainer.appendChild(animImg);
+          }
+        };
+
+        img.onerror = () => {
+          mediaContainer.innerHTML = getNoPreviewHTML();
+        };
+
+        card.onmouseenter = () => {
+          isHovered = true;
+          if (isLoaded && isAnimated) {
+            if (!animImg) {
+              animImg = document.createElement("img");
+              animImg.src = model.preview;
+              animImg.decoding = "async";
+              animImg.className = "cmm-card-anim-img";
+              animImg.alt = "preview";
+              mediaContainer.appendChild(animImg);
+            } else {
+              animImg.style.display = "block";
+            }
+          }
+        };
+
+        card.onmouseleave = () => {
+          isHovered = false;
+          if (animImg) {
+            animImg.style.display = "none";
+          }
+        };
       }
     } else {
-      mediaHTML = getNoPreviewHTML();
+      mediaContainer.innerHTML = getNoPreviewHTML();
     }
 
     const fullName = model.subFolder ? `${model.subFolder}/${model.basename}${model.extension}` : `${model.basename}${model.extension}`;
 
-    card.innerHTML = `
-      <div class="cmm-card-media">${mediaHTML}</div>
-      <div class="cmm-card-info">
-        <div class="cmm-card-title" title="${fullName}">${model.basename}</div>
-        <div class="cmm-card-sub">
-          <span>${model.extension}</span>
-          <span>${formatBytes(model.sizeBytes)}</span>
-        </div>
+    const infoDiv = document.createElement("div");
+    infoDiv.className = "cmm-card-info";
+    infoDiv.innerHTML = `
+      <div class="cmm-card-title" title="${escapeHtml(fullName)}">${escapeHtml(model.basename)}</div>
+      <div class="cmm-card-sub">
+        <span>${escapeHtml(model.extension)}</span>
+        <span>${formatBytes(model.sizeBytes)}</span>
       </div>
     `;
+
+    card.appendChild(mediaContainer);
+    card.appendChild(infoDiv);
 
     card.onclick = () => openModelDetailModal(model, loadModels);
 
@@ -1307,7 +1470,7 @@ async function openModelDetailModal(model, onRefresh) {
       if (["mp4", "webm", "mov"].includes(ext)) {
         previewBox.innerHTML = `<video src="${previewSrc}" controls autoplay loop style="width:100%; height:100%; object-fit:cover; border-radius:6px;" onerror="this.onerror=null; this.parentElement.innerHTML=getNoPreviewHTML();"></video>`;
       } else {
-        previewBox.innerHTML = `<img src="${previewSrc}" style="width:100%; max-height:340px; object-fit:cover; border-radius:6px;" alt="Preview" onerror="this.onerror=null; this.parentElement.innerHTML=getNoPreviewHTML();" />`;
+        previewBox.innerHTML = `<img src="${previewSrc}" decoding="async" style="width:100%; max-height:340px; object-fit:cover; border-radius:6px;" alt="Preview" onerror="this.onerror=null; this.parentElement.innerHTML=getNoPreviewHTML();" />`;
       }
     } else {
       previewBox.innerHTML = getNoPreviewHTML();

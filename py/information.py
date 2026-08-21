@@ -1,7 +1,6 @@
 import os
 import re
 import uuid
-import math
 import yaml
 import requests
 import markdownify
@@ -13,8 +12,6 @@ import folder_paths
 from aiohttp import web
 from abc import ABC, abstractmethod
 from urllib.parse import urlparse, parse_qs
-from PIL import Image
-from io import BytesIO
 from typing import Optional, Union, List, Dict, Any
 
 
@@ -728,16 +725,7 @@ class Information:
             if not os.path.isfile(abs_path):
                 return web.Response(status=404, text="Preview not found")
 
-            # Determine content type from the actual file
-            content_type = utils.resolve_file_content_type(abs_path)
-
-            if content_type == "video":
-                # Serve video files directly
-                return web.FileResponse(abs_path)
-            else:
-                # Serve image files (WebP or fallback images)
-                image_data = self.get_image_preview_data(abs_path)
-                return web.Response(body=image_data.getvalue(), content_type="image/webp")
+            return web.FileResponse(abs_path)
 
         @routes.get("/model-manager/preview/download/{filename}")
         async def read_download_preview(request):
@@ -749,64 +737,6 @@ class Information:
                 return web.Response(status=404, text="Preview not found")
 
             return web.FileResponse(preview_path)
-
-    def get_image_preview_data(self, filename: str):
-        with Image.open(filename) as img:
-            max_size = 1024
-            original_format = img.format
-
-            exif_data = img.info.get("exif")
-            icc_profile = img.info.get("icc_profile")
-
-            if getattr(img, "is_animated", False) and img.n_frames > 1:
-                total_frames = img.n_frames
-                step = max(1, math.ceil(total_frames / 30))
-
-                frames, durations = [], []
-
-                for frame_idx in range(0, total_frames, step):
-                    img.seek(frame_idx)
-                    frame = img.copy()
-                    frame.thumbnail((max_size, max_size), Image.Resampling.NEAREST)
-
-                    frames.append(frame)
-                    durations.append(img.info.get("duration", 100) * step)
-
-                save_args = {
-                    "format": "WEBP",
-                    "save_all": True,
-                    "append_images": frames[1:],
-                    "duration": durations,
-                    "loop": 0,
-                    "quality": 80,
-                    "method": 0,
-                    "allow_mixed": False,
-                }
-
-                if exif_data:
-                    save_args["exif"] = exif_data
-
-                if icc_profile:
-                    save_args["icc_profile"] = icc_profile
-
-                img_byte_arr = BytesIO()
-                frames[0].save(img_byte_arr, **save_args)
-                img_byte_arr.seek(0)
-                return img_byte_arr
-
-            img.thumbnail((max_size, max_size), Image.Resampling.BICUBIC)
-
-            img_byte_arr = BytesIO()
-            save_args = {"format": "WEBP", "quality": 80}
-
-            if exif_data:
-                save_args["exif"] = exif_data
-            if icc_profile:
-                save_args["icc_profile"] = icc_profile
-
-            img.save(img_byte_arr, **save_args)
-            img_byte_arr.seek(0)
-            return img_byte_arr
 
     def fetch_model_info(self, model_page: str, request: Optional[web.Request] = None):
         if not model_page:

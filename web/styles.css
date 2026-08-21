@@ -215,6 +215,8 @@
   cursor: pointer;
   transition: all 0.12s ease;
   position: relative;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 240px;
 }
 
 .cmm-card:hover {
@@ -235,10 +237,49 @@
   position: relative;
 }
 
-.cmm-card-media img, .cmm-card-media video {
+.cmm-card-media img,
+.cmm-card-media video,
+.cmm-card-media canvas {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
+}
+
+.cmm-card-canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cmm-card-anim-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+}
+
+.cmm-media-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  color: #e2e8f0;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 2;
+  transition: opacity 0.15s ease;
+}
+
+.cmm-card:hover .cmm-media-badge {
+  opacity: 0;
 }
 
 .cmm-card-placeholder {
