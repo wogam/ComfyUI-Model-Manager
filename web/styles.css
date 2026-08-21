@@ -745,7 +745,8 @@
 
 /* Download Task Container (Scrollable History) */
 #cmm-tasks-container {
-  max-height: 380px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -780,12 +781,27 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex-shrink: 0;
   transition: all 0.12s ease;
 }
 
 .cmm-task-item:hover {
   border-color: rgba(255, 255, 255, 0.14);
   background: #1d1d2b;
+}
+
+.cmm-btn-visit {
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  color: #93c5fd;
+  transition: all 0.15s ease;
+}
+
+.cmm-btn-visit:hover {
+  background: rgba(59, 130, 246, 0.2) !important;
+  border-color: rgba(96, 165, 250, 0.6) !important;
+  color: #ffffff !important;
+  text-decoration: none !important;
 }
 
 .cmm-task-row {

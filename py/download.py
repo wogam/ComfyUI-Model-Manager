@@ -32,6 +32,7 @@ class TaskStatus:
     progress: float = 0
     bps: float = 0
     error: Optional[str] = None
+    modelUrl: Optional[str] = None
 
     def __init__(self, **kwargs):
         self.taskId = kwargs.get("taskId", None)
@@ -45,6 +46,7 @@ class TaskStatus:
         self.progress = kwargs.get("progress", 0)
         self.bps = kwargs.get("bps", 0)
         self.error = kwargs.get("error", None)
+        self.modelUrl = kwargs.get("modelUrl", None)
 
     def to_dict(self):
         return {
@@ -59,6 +61,7 @@ class TaskStatus:
             "progress": self.progress,
             "bps": self.bps,
             "error": self.error,
+            "modelUrl": self.modelUrl,
         }
 
 
@@ -72,6 +75,7 @@ class TaskContent:
     downloadUrl: str
     sizeBytes: float
     hashes: Optional[dict[str, str]] = None
+    modelUrl: Optional[str] = None
 
     def __init__(self, **kwargs):
         self.type = kwargs.get("type", None)
@@ -82,6 +86,7 @@ class TaskContent:
         self.downloadUrl = kwargs.get("downloadUrl", None)
         self.sizeBytes = float(kwargs.get("sizeBytes", 0))
         self.hashes = kwargs.get("hashes", None)
+        self.modelUrl = kwargs.get("modelUrl", None)
 
     def to_dict(self):
         return {
@@ -93,6 +98,7 @@ class TaskContent:
             "downloadUrl": self.downloadUrl,
             "sizeBytes": self.sizeBytes,
             "hashes": self.hashes,
+            "modelUrl": self.modelUrl,
         }
 
 
@@ -273,6 +279,30 @@ class ModelDownload:
                 download_size = os.path.getsize(download_file)
 
             total_size = task_content.sizeBytes
+            model_url = getattr(task_content, "modelUrl", None)
+            if not model_url and getattr(task_content, "description", None):
+                desc = task_content.description
+                if "modelPage:" in desc:
+                    m = re.search(r'modelPage:\s*["\']?(https?://[^\s"\']+)["\']?', desc)
+                    if m:
+                        model_url = m.group(1)
+            if not model_url and getattr(task_content, "downloadUrl", None):
+                dl_url = task_content.downloadUrl
+                if "civitai.com/api/download/models/" in dl_url:
+                    vid = re.search(r'/models/(\d+)', dl_url)
+                    if vid:
+                        model_url = f"https://civitai.com/models/{vid.group(1)}"
+                elif "huggingface.co/" in dl_url and "/resolve/" in dl_url:
+                    hf_match = re.search(r'huggingface\.co/([^/]+/[^/]+)/resolve/[^/]+/(.+?)(?:\?|$)', dl_url)
+                    if hf_match:
+                        model_url = f"https://huggingface.co/{hf_match.group(1)}/blob/main/{hf_match.group(2)}"
+                    else:
+                        hf_repo = re.search(r'huggingface\.co/([^/]+/[^/]+)', dl_url)
+                        if hf_repo:
+                            model_url = f"https://huggingface.co/{hf_repo.group(1)}"
+                elif any(domain in dl_url for domain in ["civitai.com", "civitai.red", "civitai.green", "huggingface.co"]):
+                    model_url = dl_url
+
             task_status = TaskStatus(
                 taskId=task_id,
                 type=task_content.type,
@@ -282,6 +312,7 @@ class ModelDownload:
                 downloadedSize=download_size,
                 totalSize=task_content.sizeBytes,
                 progress=download_size / total_size * 100 if total_size > 0 else 0,
+                modelUrl=model_url,
             )
 
             self.download_model_task_status[task_id] = task_status
@@ -349,6 +380,33 @@ class ModelDownload:
                 download_platform = "huggingface"
         task_data["downloadPlatform"] = download_platform
 
+        model_url = task_data.get("modelUrl") or task_data.get("modelPage") or None
+        if not model_url and task_data.get("description"):
+            desc = task_data.get("description", "")
+            if "modelPage:" in desc:
+                m = re.search(r'modelPage:\s*["\']?(https?://[^\s"\']+)["\']?', desc)
+                if m:
+                    model_url = m.group(1)
+        if not model_url and task_data.get("downloadUrl"):
+            dl_url = task_data.get("downloadUrl", "")
+            if "civitai.com/api/download/models/" in dl_url:
+                vid = re.search(r'/models/(\d+)', dl_url)
+                if vid:
+                    model_url = f"https://civitai.com/models/{vid.group(1)}"
+            elif "huggingface.co/" in dl_url and "/resolve/" in dl_url:
+                hf_match = re.search(r'huggingface\.co/([^/]+/[^/]+)/resolve/[^/]+/(.+?)(?:\?|$)', dl_url)
+                if hf_match:
+                    model_url = f"https://huggingface.co/{hf_match.group(1)}/blob/main/{hf_match.group(2)}"
+                else:
+                    hf_repo = re.search(r'huggingface\.co/([^/]+/[^/]+)', dl_url)
+                    if hf_repo:
+                        model_url = f"https://huggingface.co/{hf_repo.group(1)}"
+            elif any(domain in dl_url for domain in ["civitai.com", "civitai.red", "civitai.green", "huggingface.co"]):
+                model_url = dl_url
+
+        if model_url:
+            task_data["modelUrl"] = model_url
+
         try:
             preview_file = task_data.pop("previewFile", None)
             utils.save_model_preview(task_path, preview_file, download_platform)
@@ -360,6 +418,7 @@ class ModelDownload:
                 preview=utils.get_model_preview_name(task_path),
                 platform=download_platform,
                 totalSize=float(task_data.get("sizeBytes", 0)),
+                modelUrl=model_url,
             )
             self.download_model_task_status[task_id] = task_status
             await utils.send_json("create_download_task", task_status.to_dict())

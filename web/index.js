@@ -30,6 +30,27 @@ function formatBytes(bytes, decimals = 2) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i];
 }
 
+function formatDuration(seconds) {
+  if (!isFinite(seconds) || seconds < 0) return "";
+  const sec = Math.round(seconds);
+  if (sec < 60) {
+    return `${sec}s`;
+  }
+  const mins = Math.floor(sec / 60);
+  const remSec = sec % 60;
+  if (mins < 60) {
+    return remSec > 0 ? `${mins}m ${remSec}s` : `${mins}m`;
+  }
+  const hours = Math.floor(mins / 60);
+  const remMins = mins % 60;
+  if (hours < 24) {
+    return remMins > 0 ? `${hours}h ${remMins}m` : `${hours}h`;
+  }
+  const days = Math.floor(hours / 24);
+  const remHours = hours % 24;
+  return remHours > 0 ? `${days}d ${remHours}h` : `${days}d`;
+}
+
 function formatDate(timestamp) {
   if (!timestamp) return "";
   let cleanStr = String(timestamp).trim().replace(/^['"]|['"]$/g, '');
@@ -1533,9 +1554,9 @@ async function openDownloadManagerModal() {
       </div>
     </div>
 
-    <div class="cmm-body" style="padding:18px; display:flex; flex-direction:column; gap:16px;">
+    <div class="cmm-body" style="padding:18px; display:flex; flex-direction:column; gap:16px; min-height:0; overflow-y:auto;">
       <!-- Add Task Section -->
-      <div class="cmm-section-card">
+      <div class="cmm-section-card" style="flex-shrink:0;">
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
           <h4 style="margin:0; color:#f8fafc; font-size:0.95rem;">Add Download Tasks</h4>
           <div class="cmm-tabs-nav" style="margin-bottom:0;">
@@ -1638,8 +1659,8 @@ async function openDownloadManagerModal() {
       </div>
 
       <!-- Downloads History & Active Section -->
-      <div>
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <div style="display:flex; flex-direction:column; flex:1; min-height:0;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-shrink:0;">
           <h4 style="margin:0; color:#fff; display:flex; align-items:center; gap:8px;">
             <span>Downloads</span>
             <span id="cmm-dl-count" style="font-size:0.8rem; font-weight:normal; color:#888;"></span>
@@ -1878,6 +1899,7 @@ async function openDownloadManagerModal() {
       description: parsedData?.description || "",
       downloadPlatform: platform,
       downloadUrl: parsedData?.downloadUrl || url,
+      modelUrl: parsedData?.modelPage || parsedData?.modelUrl || url,
       sizeBytes: parsedData?.sizeBytes || 0,
       previewFile: previewFile || "",
     };
@@ -2192,6 +2214,7 @@ async function openDownloadManagerModal() {
           description: item.parsedData?.description || "",
           downloadPlatform: platform,
           downloadUrl: item.parsedData?.downloadUrl || item.url,
+          modelUrl: item.parsedData?.modelPage || item.parsedData?.modelUrl || item.url,
           sizeBytes: item.sizeBytes || 0,
           previewFile: item.preview || "",
         };
@@ -2288,7 +2311,16 @@ async function openDownloadManagerModal() {
             statusBadgeClass = "cmm-badge-downloading";
             statusLabel = "⬇️ Downloading";
             progressFillColor = "#3b82f6";
-            detailText = `<span>${formatBytes(task.downloadedSize)} / ${formatBytes(task.totalSize)} (${pct.toFixed(1)}%)</span><span>⚡ ${formatBytes(task.bps)}/s</span>`;
+            let etaText = "";
+            if (task.bps > 0 && task.totalSize && task.totalSize > (task.downloadedSize || 0)) {
+              const remainingBytes = task.totalSize - (task.downloadedSize || 0);
+              const etaSec = remainingBytes / task.bps;
+              const formattedEta = formatDuration(etaSec);
+              if (formattedEta) {
+                etaText = ` • ⏱️ ${formattedEta}`;
+              }
+            }
+            detailText = `<span>${formatBytes(task.downloadedSize)} / ${formatBytes(task.totalSize)} (${pct.toFixed(1)}%)</span><span>⚡ ${formatBytes(task.bps)}/s${etaText}</span>`;
             actionButtons = `
               <button class="cmm-btn cmm-btn-pause" data-id="${task.taskId}">⏸️ Pause</button>
               <button class="cmm-btn cmm-btn-danger cmm-btn-del" data-id="${task.taskId}">🗑️ Cancel</button>
@@ -2339,6 +2371,16 @@ async function openDownloadManagerModal() {
             `;
           }
 
+          let visitUrl = task.modelUrl || "";
+          if (visitUrl) {
+            visitUrl = visitUrl.replace(/:\/\/(civitai\.(red|green))/, "://civitai.com");
+          }
+          const visitButton = visitUrl ? `
+            <a href="${escapeHtml(visitUrl)}" target="_blank" rel="noopener noreferrer" class="cmm-btn cmm-btn-visit" style="text-decoration:none; font-size:0.78rem; padding:4px 9px; display:inline-flex; align-items:center; gap:5px; color:#93c5fd; border-color:rgba(147,197,253,0.25);" title="Open model page (${escapeHtml(visitUrl)})">
+              <span>🌐</span> Visit Page ↗
+            </a>
+          ` : `<span></span>`;
+
           item.innerHTML = `
             <div class="cmm-task-row" style="align-items:flex-start; gap:12px;">
               <span style="font-weight:600; color:#fff; flex:1; min-width:0; word-break:break-word; line-height:1.4;" title="${task.fullname}">${task.fullname}</span>
@@ -2351,8 +2393,11 @@ async function openDownloadManagerModal() {
               ${detailText}
             </div>
             ${task.error ? `<div style="color:#f87171; font-size:0.8rem; background:rgba(239,68,68,0.1); padding:5px 8px; border-radius:4px; border:1px solid rgba(239,68,68,0.25);">⚠️ ${task.error}</div>` : ''}
-            <div style="display:flex; justify-content:flex-end; gap:8px;">
-              ${actionButtons}
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+              ${visitButton}
+              <div style="display:flex; gap:8px;">
+                ${actionButtons}
+              </div>
             </div>
           `;
 

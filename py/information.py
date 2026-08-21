@@ -207,6 +207,8 @@ class CivitaiModelSearcher(ModelSearcher):
                     "metadata": file.get("metadata"),
                     "downloadPlatform": "civitai",
                     "downloadUrl": download_url,
+                    "modelPage": metadata_info.get("modelPage"),
+                    "modelUrl": metadata_info.get("modelPage"),
                     "hashes": file.get("hashes"),
                     "files": version_files if len(version_files) > 1 else None,
                 }
@@ -511,6 +513,8 @@ class HuggingfaceModelSearcher(ModelSearcher):
                 },
                 "downloadPlatform": "huggingface",
                 "downloadUrl": f"https://huggingface.co/{model_id}/resolve/main/{filename}?download=true",
+                "modelPage": f"https://huggingface.co/{model_id}",
+                "modelUrl": f"https://huggingface.co/{model_id}",
             }
             models.append(model)
 
