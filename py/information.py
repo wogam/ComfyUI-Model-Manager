@@ -230,7 +230,7 @@ class CivitaiModelSearcher(ModelSearcher):
         last_error = None
 
         # 1. Attempt direct request first
-        for d in ["civitai.red", "civitai.com"]:
+        for d in ["civitai.com", "civitai.red"]:
             try:
                 res = direct_session.get(f"https://{d}/api/v1/model-versions/by-hash/{hash}", timeout=10)
                 res.raise_for_status()
@@ -242,7 +242,7 @@ class CivitaiModelSearcher(ModelSearcher):
         # 2. If direct request failed and proxy is configured, fallback to proxy
         if (not response or response.status_code != 200) and proxy_session:
             utils.print_warning(f"Direct Civitai hash lookup failed ({last_error}), retrying via configured proxy fallback...")
-            for d in ["civitai.red", "civitai.com"]:
+            for d in ["civitai.com", "civitai.red"]:
                 try:
                     res = proxy_session.get(f"https://{d}/api/v1/model-versions/by-hash/{hash}", timeout=15)
                     res.raise_for_status()
@@ -261,13 +261,14 @@ class CivitaiModelSearcher(ModelSearcher):
         model_id = version.get("modelId")
         version_id = version.get("id")
 
-        model_page = f"https://civitai.red/models/{model_id}?modelVersionId={version_id}"
+        model_page = f"https://civitai.com/models/{model_id}?modelVersionId={version_id}"
 
         models = self.search_by_url(model_page, request=request)
 
         for model in models:
-            sha256 = model.get("hashes", {}).get("SHA256")
-            if sha256 == hash:
+            hashes = model.get("hashes") or {}
+            sha256 = hashes.get("SHA256") or hashes.get("sha256") or ""
+            if sha256 and sha256.lower() == hash.lower():
                 return model
 
         return models[0] if models else None

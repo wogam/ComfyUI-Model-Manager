@@ -1139,5 +1139,110 @@ input:checked + .cmm-slider:before {
   gap: 14px;
 }
 
+/* Source Page Badges */
+.cmm-source-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.15s ease;
+  line-height: 1.2;
+}
+
+.cmm-source-civitai {
+  background: rgba(56, 189, 248, 0.12);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.25);
+}
+.cmm-source-civitai:hover {
+  background: rgba(56, 189, 248, 0.24);
+  color: #7dd3fc;
+  border-color: #38bdf8;
+}
+
+.cmm-source-hf {
+  background: rgba(245, 158, 11, 0.12);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+.cmm-source-hf:hover {
+  background: rgba(245, 158, 11, 0.24);
+  color: #fde68a;
+  border-color: #fbbf24;
+}
+
+.cmm-source-general {
+  background: rgba(96, 165, 250, 0.12);
+  color: #60a5fa;
+  border: 1px solid rgba(96, 165, 250, 0.25);
+}
+.cmm-source-general:hover {
+  background: rgba(96, 165, 250, 0.24);
+  color: #93c5fd;
+  border-color: #60a5fa;
+}
+
+/* Description Source Selector (Civitai / HuggingFace tabs) */
+.cmm-desc-selector-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 6px;
+  margin-bottom: 6px;
+  flex-shrink: 0;
+}
+
+.cmm-desc-pill-group {
+  display: inline-flex;
+  background: #12121a;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 5px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.cmm-desc-pill {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 0.74rem;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  user-select: none;
+}
+
+.cmm-desc-pill:hover {
+  color: #e2e8f0;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.cmm-desc-pill.active {
+  background: #2563eb;
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.cmm-desc-pill.active[data-source="civitai"] {
+  background: #0284c7;
+  color: #ffffff;
+}
+
+.cmm-desc-pill.active[data-source="huggingface"] {
+  background: #d97706;
+  color: #ffffff;
+}
+
 
 

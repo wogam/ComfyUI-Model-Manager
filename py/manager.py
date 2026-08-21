@@ -1,5 +1,8 @@
 import os
+import re
+import yaml
 import folder_paths
+from typing import Optional
 from aiohttp import web
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -9,6 +12,95 @@ from . import config
 
 
 class ModelManager:
+
+    @staticmethod
+    def merge_model_information(civitai_info: Optional[dict], hf_info: Optional[dict], hf_url: Optional[str] = None) -> Optional[dict]:
+        if not civitai_info and not hf_info:
+            return None
+        if not civitai_info:
+            return hf_info
+        if not hf_info:
+            return civitai_info
+
+        # 1. Merge previews (Civitai previews first for sample generations, followed by HF previews)
+        civitai_previews = civitai_info.get("preview") or []
+        hf_previews = hf_info.get("preview") or []
+        seen = set()
+        merged_previews = []
+        for p in (civitai_previews + hf_previews):
+            if p and p not in seen:
+                seen.add(p)
+                merged_previews.append(p)
+
+        def parse_desc(desc_text):
+            if not desc_text:
+                return {}, ""
+            m = re.match(r"^---\s*\r?\n(.*?)\r?\n---\s*\r?\n?(.*)$", desc_text, re.DOTALL)
+            if m:
+                try:
+                    fm = yaml.safe_load(m.group(1)) or {}
+                    body = m.group(2).strip()
+                    return fm, body
+                except Exception:
+                    pass
+            return {}, desc_text.strip()
+
+        civ_fm, civ_body = parse_desc(civitai_info.get("description", ""))
+        hf_fm, hf_body = parse_desc(hf_info.get("description", ""))
+
+        hf_model_page = hf_url or hf_info.get("modelPage") or hf_fm.get("modelPage")
+        civ_model_page = civitai_info.get("modelPage") or civ_fm.get("modelPage")
+
+        merged_fm = dict(civ_fm)
+        merged_fm["website"] = "Civitai / HuggingFace"
+        merged_fm["modelPage"] = civ_model_page or hf_model_page
+        if civ_model_page:
+            merged_fm["civitaiUrl"] = civ_model_page
+        if hf_model_page:
+            merged_fm["huggingfaceUrl"] = hf_model_page
+        if not merged_fm.get("baseModel") and hf_fm.get("baseModel"):
+            merged_fm["baseModel"] = hf_fm.get("baseModel")
+        if not merged_fm.get("license") and hf_fm.get("license"):
+            merged_fm["license"] = hf_fm.get("license")
+
+        civ_tags = civ_fm.get("tags") or []
+        hf_tags = hf_fm.get("tags") or []
+        merged_tags = list(dict.fromkeys([str(t) for t in (civ_tags + hf_tags)]))
+        if merged_tags:
+            merged_fm["tags"] = merged_tags[:20]
+
+        merged_fm["preview"] = merged_previews
+
+        desc_parts = [
+            "---",
+            yaml.dump(merged_fm).strip(),
+            "---",
+            ""
+        ]
+
+        if civ_body and hf_body and hf_body not in civ_body:
+            hf_formatted = hf_body if hf_body.startswith("#") else f"# HuggingFace Model Card\n\n{hf_body}"
+            desc_parts.extend([
+                "<!-- section: civitai -->",
+                civ_body,
+                "<!-- /section: civitai -->",
+                "",
+                "<!-- section: huggingface -->",
+                hf_formatted,
+                "<!-- /section: huggingface -->"
+            ])
+        else:
+            desc_parts.append(civ_body if civ_body else hf_body)
+
+        merged_result = dict(civitai_info)
+        merged_result["preview"] = merged_previews
+        merged_result["description"] = "\n".join(desc_parts)
+        if hf_model_page:
+            merged_result["huggingfaceUrl"] = hf_model_page
+        if civ_model_page:
+            merged_result["civitaiUrl"] = civ_model_page
+
+        return merged_result
 
     def add_routes(self, routes):
 
@@ -252,7 +344,10 @@ class ModelManager:
                 req_body = await utils.get_request_body(request)
                 target_url = req_body.get("url") or req_body.get("modelPage") or request.query.get("url")
 
-                # If no URL passed in request, check if existing description file contains modelPage frontmatter
+                hf_url = None
+                civitai_url = None
+
+                # If no URL passed in request, check if existing description file contains modelPage / huggingfaceUrl / civitaiUrl frontmatter
                 if not target_url:
                     existing_info = self.get_model_info(model_path)
                     existing_desc = existing_info.get("description") or ""
@@ -260,45 +355,80 @@ class ModelManager:
                         fm_match = re.match(r"^---\s*\r?\n(.*?)\r?\n---\s*", existing_desc, re.DOTALL)
                         if fm_match:
                             try:
-                                import yaml
                                 loaded_fm = yaml.safe_load(fm_match.group(1))
                                 if isinstance(loaded_fm, dict):
                                     target_url = loaded_fm.get("modelPage") or loaded_fm.get("url")
+                                    hf_url = loaded_fm.get("huggingfaceUrl")
+                                    civitai_url = loaded_fm.get("civitaiUrl")
                             except Exception:
                                 pass
 
-                model_info = None
-
-                # 1. If target_url is found (HuggingFace or Civitai URL), fetch directly from URL
                 if target_url:
-                    from .information import Information
+                    if "huggingface.co" in target_url:
+                        hf_url = target_url
+                    elif any(c in target_url for c in ["civitai.com", "civitai.red", "civitai.green"]):
+                        civitai_url = target_url
+
+                model_info = None
+                hf_info = None
+                civitai_info = None
+
+                from .information import Information, CivitaiModelSearcher
+
+                # 1. If we have a HuggingFace URL, fetch HuggingFace info
+                if hf_url:
                     try:
-                        search_results = Information().fetch_model_info(target_url, request=request)
+                        search_results = Information().fetch_model_info(hf_url, request=request)
                         if search_results and len(search_results) > 0:
                             clean_fname = os.path.basename(filename)
                             clean_base = os.path.splitext(clean_fname)[0]
-                            matched_item = next(
+                            hf_info = next(
                                 (m for m in search_results if m.get("fullname") == clean_fname or m.get("basename") == clean_base or m.get("id") == clean_fname),
                                 search_results[0]
                             )
-                            model_info = matched_item
                     except Exception as e:
-                        utils.print_warning(f"URL info fetch failed for {target_url}: {e}")
+                        utils.print_warning(f"HuggingFace URL info fetch failed for {hf_url}: {e}")
 
-                # 2. If no info found from URL, fallback to Civitai SHA256 hash lookup
-                if not model_info:
-                    from .information import CivitaiModelSearcher
+                # 2. If we have a Civitai URL, fetch directly from Civitai
+                if civitai_url:
+                    try:
+                        search_results = Information().fetch_model_info(civitai_url, request=request)
+                        if search_results and len(search_results) > 0:
+                            clean_fname = os.path.basename(filename)
+                            clean_base = os.path.splitext(clean_fname)[0]
+                            civitai_info = next(
+                                (m for m in search_results if m.get("fullname") == clean_fname or m.get("basename") == clean_base or m.get("id") == clean_fname),
+                                search_results[0]
+                            )
+                    except Exception as e:
+                        utils.print_warning(f"Civitai URL info fetch failed for {civitai_url}: {e}")
+
+                # 3. Always attempt Civitai SHA256 hash lookup if Civitai info not yet obtained
+                # (allows models downloaded from HuggingFace to also fetch Civitai previews, trigger words, etc.)
+                if not civitai_info:
                     try:
                         hash_value = utils.calculate_sha256(model_path)
-                        model_info = CivitaiModelSearcher().search_by_hash(hash_value, request=request)
+                        utils.print_info(f"Searching Civitai info by SHA256 hash: {hash_value}")
+                        civitai_info = CivitaiModelSearcher().search_by_hash(hash_value, request=request)
+                        if civitai_info:
+                            utils.print_info(f"Found Civitai match for {filename}")
                     except Exception as e:
-                        utils.print_warning(f"Hash lookup failed for {filename}: {e}")
+                        utils.print_warning(f"Civitai hash lookup failed for {filename}: {e}")
+
+                # 4. Merge info if both exist, otherwise use whichever was found
+                if civitai_info and hf_info:
+                    model_info = self.merge_model_information(civitai_info, hf_info, hf_url=hf_url)
+                elif civitai_info:
+                    model_info = civitai_info
+                elif hf_info:
+                    model_info = hf_info
 
                 if model_info:
                     preview_url_list = model_info.get("preview", [])
                     preview_url = preview_url_list[0] if preview_url_list else None
                     if preview_url:
-                        utils.save_model_preview(model_path, preview_url, request=request)
+                        platform = model_info.get("downloadPlatform") or ("civitai" if "civitai" in str(preview_url) else "huggingface")
+                        utils.save_model_preview(model_path, preview_url, platform=platform, request=request)
 
                     description = model_info.get("description", None)
                     if description:

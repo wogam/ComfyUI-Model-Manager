@@ -1036,13 +1036,9 @@ async function openModelDetailModal(model, onRefresh) {
               <span class="cmm-spec-label">Published</span>
               <span class="cmm-spec-value" id="cmm-detail-published-val" style="font-size:0.78rem;"></span>
             </div>
-            <div class="cmm-spec-row" id="cmm-detail-modelpage-row" style="display:none;">
+            <div class="cmm-spec-row" id="cmm-detail-modelpage-row" style="display:none; align-items:flex-start;">
               <span class="cmm-spec-label">Source Page</span>
-              <span class="cmm-spec-value">
-                <a id="cmm-detail-modelpage-link" href="#" target="_blank" rel="noopener noreferrer" style="color:#60a5fa; font-weight:600; text-decoration:none; display:inline-flex; align-items:center; gap:4px;">
-                  Open ↗
-                </a>
-              </span>
+              <span class="cmm-spec-value" id="cmm-detail-modelpage-container" style="display:flex; flex-wrap:wrap; gap:4px; justify-content:flex-end;"></span>
             </div>
           </div>
 
@@ -1081,6 +1077,18 @@ async function openModelDetailModal(model, onRefresh) {
           <div style="flex:1; overflow-y:auto; display:flex; flex-direction:column; min-height:0;" id="cmm-tab-content">
             <!-- Desc Tab -->
             <div id="cmm-tab-desc" style="display:flex; flex-direction:column; gap:10px; flex:1; height:100%; min-height:0;">
+              <!-- Description Source Selector (Shown if multiple sources exist, e.g. Civitai + HuggingFace) -->
+              <div id="cmm-desc-selector-bar" class="cmm-desc-selector-bar" style="display:none;">
+                <span style="font-size:0.75rem; color:#94a3b8; font-weight:600; display:inline-flex; align-items:center; gap:4px;">
+                  <span>📖 Description Source:</span>
+                </span>
+                <div class="cmm-desc-pill-group" id="cmm-desc-pill-group">
+                  <button type="button" class="cmm-desc-pill active" data-source="civitai">Civitai</button>
+                  <button type="button" class="cmm-desc-pill" data-source="huggingface">HuggingFace</button>
+                  <button type="button" class="cmm-desc-pill" data-source="all">Both</button>
+                </div>
+              </div>
+
               <!-- Trigger Words Banner (Shown if available) -->
               <div id="cmm-trigger-banner" class="cmm-trigger-banner" style="display:none;">
                 <span class="cmm-trigger-label">🏷️ Trigger Words:</span>
@@ -1272,12 +1280,87 @@ async function openModelDetailModal(model, onRefresh) {
     }
   }
 
+  function extractDescriptionSections(cleanDesc) {
+    if (!cleanDesc) return { civitai: "", huggingface: "", hasMultiple: false };
+
+    let civitaiSection = "";
+    let hfSection = "";
+
+    // 1. Check for explicit HTML comment markers
+    const civMatch = cleanDesc.match(/<!--\s*section:\s*civitai\s*-->([\s\S]*?)<!--\s*\/section:\s*civitai\s*-->/i);
+    const hfMatch = cleanDesc.match(/<!--\s*section:\s*huggingface\s*-->([\s\S]*?)<!--\s*\/section:\s*huggingface\s*-->/i);
+
+    if (civMatch && hfMatch) {
+      civitaiSection = civMatch[1].trim();
+      hfSection = hfMatch[1].trim();
+    } else if (civMatch) {
+      civitaiSection = civMatch[1].trim();
+      hfSection = cleanDesc.replace(/<!--\s*section:\s*civitai\s*-->[\s\S]*?<!--\s*\/section:\s*civitai\s*-->/i, "").trim();
+    } else if (hfMatch) {
+      hfSection = hfMatch[1].trim();
+      civitaiSection = cleanDesc.replace(/<!--\s*section:\s*huggingface\s*-->[\s\S]*?<!--\s*\/section:\s*huggingface\s*-->/i, "").trim();
+    } else if (cleanDesc.includes("# HuggingFace Model Card") || cleanDesc.includes("# HuggingFace Model Info")) {
+      const parts = cleanDesc.split(/---\s*\r?\n(?=#\s*HuggingFace)|(?=#\s*HuggingFace\s*Model\s*(?:Card|Info))/i);
+      civitaiSection = (parts[0] || "").trim();
+      hfSection = (parts.slice(1).join("\n\n") || "").trim();
+    }
+
+    return {
+      civitai: civitaiSection,
+      huggingface: hfSection,
+      hasMultiple: Boolean(civitaiSection && hfSection)
+    };
+  }
+
+  let selectedDescSource = "civitai";
+  const descSelectorBar = dialog.querySelector("#cmm-desc-selector-bar");
+  if (descSelectorBar) {
+    descSelectorBar.querySelectorAll(".cmm-desc-pill").forEach(pill => {
+      pill.onclick = () => {
+        selectedDescSource = pill.getAttribute("data-source") || "civitai";
+        renderCurrentDescView();
+      };
+    });
+  }
+
+  function renderCurrentDescView() {
+    const sections = extractDescriptionSections(currentCleanDescription);
+
+    if (sections.hasMultiple && !isEditingDesc) {
+      if (descSelectorBar) {
+        descSelectorBar.style.display = "flex";
+        descSelectorBar.querySelectorAll(".cmm-desc-pill").forEach(pill => {
+          const src = pill.getAttribute("data-source");
+          pill.classList.toggle("active", src === selectedDescSource);
+        });
+      }
+
+      let displayMarkdown = currentCleanDescription;
+      if (selectedDescSource === "civitai") {
+        displayMarkdown = sections.civitai;
+      } else if (selectedDescSource === "huggingface") {
+        displayMarkdown = sections.huggingface;
+      } else {
+        displayMarkdown = currentCleanDescription
+          .replace(/<!--\s*\/?section:\s*(?:civitai|huggingface)\s*-->/gi, "")
+          .trim();
+      }
+      descMarkdownView.innerHTML = parseMarkdown(displayMarkdown);
+    } else {
+      if (descSelectorBar) descSelectorBar.style.display = "none";
+      const cleanDisplay = (currentCleanDescription || "")
+        .replace(/<!--\s*\/?section:\s*(?:civitai|huggingface)\s*-->/gi, "")
+        .trim();
+      descMarkdownView.innerHTML = parseMarkdown(cleanDisplay);
+    }
+  }
+
   function renderModelInfoTable(info) {
     const container = dialog.querySelector("#cmm-info-table-container");
     const pubRow = dialog.querySelector("#cmm-detail-published-row");
     const pubVal = dialog.querySelector("#cmm-detail-published-val");
     const modelPageRow = dialog.querySelector("#cmm-detail-modelpage-row");
-    const modelPageLink = dialog.querySelector("#cmm-detail-modelpage-link");
+    const modelPageContainer = dialog.querySelector("#cmm-detail-modelpage-container");
 
     if (!info || Object.keys(info).length === 0) {
       container.innerHTML = `<div style="color:#888; padding:16px; text-align:center; background:#14141d; border-radius:8px; border:1px solid rgba(255,255,255,0.07);">No additional model info available.</div>`;
@@ -1286,7 +1369,7 @@ async function openModelDetailModal(model, onRefresh) {
       return;
     }
 
-    // Populate Left Sidebar Published Date & Model Page Link
+    // Populate Left Sidebar Published Date
     const published = info.publishedAt || info.published_at || info.createdAt;
     if (published) {
       pubVal.textContent = formatDate(published);
@@ -1295,12 +1378,34 @@ async function openModelDetailModal(model, onRefresh) {
       pubRow.style.display = "none";
     }
 
-    let mPage = info.modelPage || info.model_page;
-    if (mPage) {
-      if (typeof mPage === "string" && /civitai\.(com|green)/i.test(mPage)) {
-        mPage = mPage.replace(/civitai\.(com|green)/gi, "civitai.red");
+    // Resolve Civitai & HuggingFace links
+    let civitaiLink = info.civitaiUrl || info.civitai_url;
+    let hfLink = info.huggingfaceUrl || info.huggingface_url;
+    let rawModelPage = info.modelPage || info.model_page || info.url;
+
+    if (rawModelPage && typeof rawModelPage === "string") {
+      if (/civitai\./i.test(rawModelPage) && !civitaiLink) {
+        civitaiLink = rawModelPage;
+      } else if (/huggingface\.co/i.test(rawModelPage) && !hfLink) {
+        hfLink = rawModelPage;
       }
-      modelPageLink.href = mPage;
+    }
+
+    let sourceBadges = [];
+    if (civitaiLink) {
+      let cLink = String(civitaiLink);
+      sourceBadges.push(`<a href="${escapeHtml(cLink)}" target="_blank" rel="noopener noreferrer" class="cmm-source-badge cmm-source-civitai" title="Open Civitai model page">Civitai ↗</a>`);
+    }
+    if (hfLink) {
+      let hLink = String(hfLink);
+      sourceBadges.push(`<a href="${escapeHtml(hLink)}" target="_blank" rel="noopener noreferrer" class="cmm-source-badge cmm-source-hf" title="Open HuggingFace repository">HuggingFace ↗</a>`);
+    }
+    if (sourceBadges.length === 0 && rawModelPage) {
+      sourceBadges.push(`<a href="${escapeHtml(String(rawModelPage))}" target="_blank" rel="noopener noreferrer" class="cmm-source-badge cmm-source-general" title="Open model page">Open ↗</a>`);
+    }
+
+    if (sourceBadges.length > 0) {
+      modelPageContainer.innerHTML = sourceBadges.join("");
       modelPageRow.style.display = "flex";
     } else {
       modelPageRow.style.display = "none";
@@ -1314,12 +1419,10 @@ async function openModelDetailModal(model, onRefresh) {
       let label = k.replace(/([A-Z])/g, " $1").replace(/^./, str => str.toUpperCase());
       let valHtml = "";
 
-      if (k === "modelPage" && v) {
-        let linkUrl = v;
-        if (typeof linkUrl === "string" && /civitai\.(com|green)/i.test(linkUrl)) {
-          linkUrl = linkUrl.replace(/civitai\.(com|green)/gi, "civitai.red");
-        }
-        valHtml = `<a href="${linkUrl}" target="_blank" rel="noopener noreferrer" style="color:#60a5fa; font-weight:600; text-decoration:underline;">${escapeHtml(linkUrl)} ↗</a>`;
+      if ((k === "modelPage" || k === "civitaiUrl" || k === "huggingfaceUrl" || k === "url") && v) {
+        let linkUrl = String(v);
+        let linkClass = k === "civitaiUrl" ? "cmm-source-civitai" : (k === "huggingfaceUrl" ? "cmm-source-hf" : "cmm-source-general");
+        valHtml = `<a href="${escapeHtml(linkUrl)}" target="_blank" rel="noopener noreferrer" class="cmm-source-badge ${linkClass}" style="text-decoration:none;">${escapeHtml(linkUrl)} ↗</a>`;
       } else if ((k === "publishedAt" || k === "createdAt" || k === "updatedAt") && v) {
         valHtml = `<span style="font-variant-numeric:tabular-nums;">${escapeHtml(formatDate(v))}</span>`;
       } else if ((k === "trainedWords" || k === "triggerWords") && v) {
@@ -1359,7 +1462,7 @@ async function openModelDetailModal(model, onRefresh) {
     currentFrontmatterInfo = info;
 
     descTextarea.value = currentCleanDescription;
-    descMarkdownView.innerHTML = parseMarkdown(currentCleanDescription);
+    renderCurrentDescView();
     updateTriggerWordsBanner(currentFrontmatterInfo);
     renderModelInfoTable(currentFrontmatterInfo);
   }
@@ -1369,13 +1472,14 @@ async function openModelDetailModal(model, onRefresh) {
     if (isEditingDesc) {
       descMarkdownView.style.display = "none";
       descTextarea.style.display = "block";
+      if (descSelectorBar) descSelectorBar.style.display = "none";
       toggleEditBtn.style.display = "none";
       cancelDescBtn.style.display = "inline-flex";
       saveDescBtn.style.display = "inline-flex";
     } else {
-      descMarkdownView.innerHTML = parseMarkdown(descTextarea.value);
-      descMarkdownView.style.display = "block";
       descTextarea.style.display = "none";
+      descMarkdownView.style.display = "block";
+      renderCurrentDescView();
       toggleEditBtn.style.display = "inline-flex";
       toggleEditBtn.textContent = "✏️ Edit";
       cancelDescBtn.style.display = "none";
